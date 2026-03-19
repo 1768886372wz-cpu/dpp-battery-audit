@@ -7,14 +7,15 @@ from io import StringIO
 from pathlib import Path
 from typing import Dict, List
 
+import pandas as pd
+import streamlit as st
+
+from dpp_engine import RECYCLED_MIN_PCT, generate_audit_pdf, validate_record
+
 # Streamlit writes internal files to ~/.streamlit by default.
-# In some sandboxed/restricted environments, ~/ is not writable, which can
-# crash the Streamlit session (disconnect in browser).
-# We redirect HOME to a writable folder inside the project.
 _PROJECT_HOME = Path(__file__).resolve().parent / ".streamlit_home"
 try:
     _ = Path.home() / ".streamlit"
-    # If Path.home() is not writable, attempt to create a marker.
     _marker = _ / ".write_test"
     _marker.parent.mkdir(parents=True, exist_ok=True)
     _marker.write_text("ok", encoding="utf-8")
@@ -23,409 +24,314 @@ except Exception:
     _PROJECT_HOME.mkdir(parents=True, exist_ok=True)
     os.environ["HOME"] = str(_PROJECT_HOME)
 
-import streamlit as st
-import pandas as pd
-
-from dpp_engine import RECYCLED_MIN_PCT, generate_audit_pdf, validate_record
-
 
 def _hash_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
-st.set_page_config(
-    page_title="中资出海电池 DPP 合规预审计平台",
-    layout="wide",
-)
-
-
-st.markdown(
-    """
-<style>
-body { background: #F7F8FA; }
-.brand-shell { background: linear-gradient(120deg,#0B3D91,#1C5AC3); border-radius: 14px; padding: 14px 18px; color: #fff; margin-bottom: 14px; }
-.brand-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.brand-left { display:flex; align-items:center; gap:12px; }
-.brand-logo { width:38px; height:38px; border-radius:10px; background:#fff; color:#0B3D91; font-weight:800; display:flex; align-items:center; justify-content:center; }
-.brand-name { font-size:18px; font-weight:800; }
-.brand-tag { font-size:12px; opacity:0.95; }
-.main-title { font-size: 28px; font-weight: 800; letter-spacing: 0.2px; margin-bottom: 6px; }
-.subtitle { color: #555; margin-bottom: 18px; }
-.card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
-.status-green { color: #1B5E20; font-weight: 800; }
-.status-red { color: #B00020; font-weight: 800; }
-.status-grey { color: #444; font-weight: 800; }
-.small { color: #666; font-size: 12px; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-lang = st.sidebar.selectbox("Language / 语言", ["中文界面", "English Interface"], index=0)
-is_cn = lang == "中文界面"
-
-UI = {
-    "title": "中资出海电池 DPP 合规预审计平台" if is_cn else "Battery DPP Compliance Pre-Audit Platform",
-    "subtitle": "上传电池数据表，进行欧盟 2023/1542 电池 DPP 合规预审计并生成报告"
-    if is_cn
-    else "Upload battery data and run EU 2023/1542 DPP pre-audit with report generation.",
-    "upload": "上传 CSV 文件" if is_cn else "Upload CSV File",
-    "toggle_suspicious": "🚨 仅查看疑似造假/高风险样本" if is_cn else "🚨 Show only suspicious/high-risk samples",
-    "fraud_filter": "异常类型筛选" if is_cn else "Anomaly Type Filter",
-    "preview_title": "上传数据预览（Model 级别输入）" if is_cn else "Uploaded Data Preview (Model-level input)",
-    "audit_btn": "开始 AI 审计" if is_cn else "Start AI Audit",
-    "audit_hint": "将调用本地校验逻辑并生成 PDF。" if is_cn else "Runs local rules and generates PDF report.",
-    "overview": "审计概览 / Audit Overview",
-    "result_title": "审计结果（Model 级别）" if is_cn else "Audit Results (Model-level)",
-    "download_pdf": "下载 PDF 审计报告" if is_cn else "Download PDF Audit Report",
-    "client_name": "客户名称" if is_cn else "Client Name",
-    "project_code": "项目编号" if is_cn else "Project Code",
-    "report_no": "报告编号" if is_cn else "Report No.",
+TRANSLATIONS = {
+    "zh": {
+        "lang_select": "语言",
+        "lang_zh": "中文",
+        "lang_en": "English",
+        "title": "中资出海电池 DPP 合规预审计平台",
+        "subtitle": "上传数据并执行欧盟 2023/1542 电池法案预审计。",
+        "client_name": "客户名称",
+        "project_code": "项目编号",
+        "report_no": "报告编号",
+        "tab_audit": "🛡 AI 审计中心",
+        "tab_law": "📚 法规百科",
+        "tab_news": "📰 行业动态",
+        "tab_case": "🏆 成功案例",
+        "upload_csv": "上传 CSV 文件",
+        "filter_fraud": "🚨 仅查看疑似造假/高风险样本",
+        "anomaly_filter": "异常类型筛选",
+        "af_all": "全部异常",
+        "af_high": "仅 HIGH_RISK",
+        "af_unreal": "仅 DATA_UNREALISTIC",
+        "preview": "数据预览",
+        "manual_entry": "手动单条填报",
+        "run_audit": "开始 AI 审计",
+        "running": "正在审计并生成报告...",
+        "progress": "AI 正在进行深度法律检索与字段比对...",
+        "done": "审计完成",
+        "overview": "审计概览",
+        "metric_rate": "总合规率",
+        "metric_carbon": "平均碳足迹",
+        "metric_risk": "风险预警数",
+        "chart_mix": "合规结构",
+        "chart_gap": "回收比例与法案阈值差距（锂/钴/镍）",
+        "result_table": "审计结果",
+        "download_pdf": "下载 PDF 审计报告",
+        "status_col": "判定结果",
+        "risk_col": "风险等级",
+        "reason_col": "问题说明",
+        "model_col": "型号",
+        "law_title": "法规重点摘要",
+        "law_body": "Article 7（碳足迹）、Article 8（回收比例）、Article 14（状态健康信息）、Article 77 与 Annex XIII（电池护照信息要求）。",
+        "news_title": "2026 年欧盟 DPP 执行进度（模拟高质量摘要）",
+        "news_1": "2026Q1：多国市场监管机构发布电池护照数据一致性检查指引，强化供应链可追溯要求。",
+        "news_2": "2026Q2：重点行业联盟推动跨平台护照互操作标准，降低 OEM 与 Tier-1 数据交换成本。",
+        "news_3": "2026Q3：欧洲买方审计将回收比例与碳足迹声明纳入采购门槛，合规成为核心商业条件。",
+        "case_title": "模拟成功案例",
+        "case_body": "某中国电池头部企业通过建立 DPP 数据治理中台、碳足迹核算体系与供应商证据链，在欧盟客户年度评审中获得优先采购资格。",
+        "manual_submit": "提交单条审计",
+        "manual_result": "单条审计结果",
+    },
+    "en": {
+        "lang_select": "Language",
+        "lang_zh": "Chinese",
+        "lang_en": "English",
+        "title": "Battery DPP Compliance Pre-Audit Platform",
+        "subtitle": "Upload data and run EU 2023/1542 pre-audit checks.",
+        "client_name": "Client Name",
+        "project_code": "Project Code",
+        "report_no": "Report No.",
+        "tab_audit": "🛡 AI Audit Center",
+        "tab_law": "📚 Regulation Knowledge",
+        "tab_news": "📰 Industry Updates",
+        "tab_case": "🏆 Success Story",
+        "upload_csv": "Upload CSV File",
+        "filter_fraud": "🚨 Show only suspicious/high-risk samples",
+        "anomaly_filter": "Anomaly Filter",
+        "af_all": "All anomalies",
+        "af_high": "Only HIGH_RISK",
+        "af_unreal": "Only DATA_UNREALISTIC",
+        "preview": "Data Preview",
+        "manual_entry": "Manual Single Entry",
+        "run_audit": "Start AI Audit",
+        "running": "Auditing and generating report...",
+        "progress": "AI is performing legal retrieval and field validation...",
+        "done": "Audit completed",
+        "overview": "Audit Overview",
+        "metric_rate": "Overall Compliance Rate",
+        "metric_carbon": "Average Carbon Footprint",
+        "metric_risk": "Risk Alerts",
+        "chart_mix": "Compliance Mix",
+        "chart_gap": "Recycled Content Gap vs Legal Threshold (Li/Co/Ni)",
+        "result_table": "Audit Results",
+        "download_pdf": "Download PDF Audit Report",
+        "status_col": "Status",
+        "risk_col": "Risk Level",
+        "reason_col": "Issues",
+        "model_col": "Model",
+        "law_title": "Key Regulatory Summary",
+        "law_body": "Article 7 (carbon footprint), Article 8 (recycled content), Article 14 (state-of-health information), Article 77 and Annex XIII (battery passport data requirements).",
+        "news_title": "EU DPP 2026 Progress (simulated high-quality briefs)",
+        "news_1": "Q1 2026: Multiple authorities publish battery-passport data consistency guidance, strengthening supply-chain traceability requirements.",
+        "news_2": "Q2 2026: Industry alliances accelerate cross-platform passport interoperability standards to reduce OEM/Tier-1 integration cost.",
+        "news_3": "Q3 2026: European buyers include recycled-content and carbon-footprint declarations as procurement gates.",
+        "case_title": "Simulated Success Story",
+        "case_body": "A leading Chinese battery company built a DPP data governance hub, carbon accounting workflow, and supplier evidence chain, and achieved preferred-supplier status in EU annual review.",
+        "manual_submit": "Run Single Audit",
+        "manual_result": "Single Audit Result",
+    },
 }
 
-client_name = (st.sidebar.text_input(UI["client_name"], value="Demo Client") or "Demo Client").strip()
-project_code = (st.sidebar.text_input(UI["project_code"], value="DPP-2026-PRE") or "DPP-2026-PRE").strip()
+st.set_page_config(page_title="DPP Audit", layout="wide")
+lang_pick = st.sidebar.selectbox(TRANSLATIONS["en"]["lang_select"], [TRANSLATIONS["zh"]["lang_zh"], TRANSLATIONS["en"]["lang_en"]], index=0)
+lang = "zh" if lang_pick == TRANSLATIONS["zh"]["lang_zh"] else "en"
+t = TRANSLATIONS[lang]
 
+client_name = (st.sidebar.text_input(t["client_name"], value="Demo Client") or "Demo Client").strip()
+project_code = (st.sidebar.text_input(t["project_code"], value="DPP-2026-PRE") or "DPP-2026-PRE").strip()
 report_no = f"{project_code}-{_hash_bytes((client_name + project_code).encode())[:8].upper()}"
 
-st.markdown(
-    f"""
-<div class="brand-shell">
-  <div class="brand-row">
-    <div class="brand-left">
-      <div class="brand-logo">DPP</div>
-      <div>
-        <div class="brand-name">AI Compliance Engine</div>
-        <div class="brand-tag">EU Battery Passport Pre-Audit SaaS</div>
-      </div>
-    </div>
-    <div style="text-align:right; font-size:12px;">
-      <div><b>{UI["report_no"]}:</b> {report_no}</div>
-      <div><b>{UI["client_name"]}:</b> {client_name}</div>
-    </div>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-st.markdown(f'<div class="main-title">{UI["title"]}</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="subtitle">{UI["subtitle"]}</div>', unsafe_allow_html=True)
+st.title(t["title"])
+st.caption(t["subtitle"])
+st.write(f"**{t['report_no']}**: `{report_no}`")
 
 
 def _parse_csv_bytes(csv_bytes: bytes) -> List[Dict[str, str]]:
     text = csv_bytes.decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(StringIO(text))
-    return [row for row in reader]
+    return [row for row in csv.DictReader(StringIO(text))]
 
 
-uploaded_file = st.sidebar.file_uploader(UI["upload"], type=["csv"])
-only_suspicious = st.sidebar.toggle(UI["toggle_suspicious"], value=False)
-fraud_filter = st.sidebar.selectbox(
-    UI["fraud_filter"],
-    ["全部异常", "仅 HIGH_RISK", "仅 DATA_UNREALISTIC"] if is_cn else ["All Anomalies", "Only HIGH_RISK", "Only DATA_UNREALISTIC"],
-    index=0,
-)
-
-if uploaded_file is None:
-    st.markdown(
-        '<div class="card small">请在左侧上传一个电池数据 CSV 文件。</div>' if is_cn else '<div class="card small">Please upload a battery CSV file in the sidebar.</div>',
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-csv_bytes = uploaded_file.getvalue()
-csv_hash = _hash_bytes(csv_bytes)
-
-if "csv_hash" not in st.session_state or st.session_state.get("csv_hash") != csv_hash:
-    st.session_state["csv_hash"] = csv_hash
-    st.session_state["csv_rows"] = _parse_csv_bytes(csv_bytes)
-    st.session_state["audit_results"] = None
-    st.session_state["pdf_bytes"] = None
-    st.session_state["pdf_filename"] = None
-
-csv_rows: List[Dict[str, str]] = st.session_state["csv_rows"]
-
-with st.container():
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader(UI["preview_title"])
-    preview_rows = csv_rows
-    if only_suspicious and st.session_state.get("audit_results") is not None:
-        def _passes_fraud_filter(flags: set[str]) -> bool:
-            if fraud_filter in {"仅 HIGH_RISK", "Only HIGH_RISK"}:
-                return "HIGH_RISK" in flags
-            if fraud_filter in {"仅 DATA_UNREALISTIC", "Only DATA_UNREALISTIC"}:
-                return "DATA_UNREALISTIC" in flags
-            return bool(flags.intersection({"HIGH_RISK", "DATA_UNREALISTIC"}))
-
-        flagged_models = {
-            r.model
-            for r in st.session_state["audit_results"]
-            if _passes_fraud_filter(set(getattr(r, "fraud_flags", []) or []))
-        }
-        preview_rows = [row for row in csv_rows if str(row.get("model", "")).strip() in flagged_models]
-    st.dataframe(preview_rows, use_container_width=True, height=280)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+def _passes_fraud_filter(flags: set[str], fraud_filter: str) -> bool:
+    if fraud_filter == t["af_high"]:
+        return "HIGH_RISK" in flags
+    if fraud_filter == t["af_unreal"]:
+        return "DATA_UNREALISTIC" in flags
+    return bool(flags.intersection({"HIGH_RISK", "DATA_UNREALISTIC"}))
 
 
-def _render_results_table(audit_results):
-    # audit_results: List[DppResult]
-    header = (
-        "<tr>"
-        "<th style='text-align:left'>型号 / Model</th>"
-        "<th style='text-align:left'>判定 / Status</th>"
-        "<th style='text-align:left'>合规风险等级 / Risk</th>"
-        "<th style='text-align:left'>不合规原因与条文引用</th>"
-        "</tr>"
-    )
-
-    def status_html(status: str) -> str:
-        if status == "COMPLIANT":
-            return "<span class='status-green'>COMPLIANT / 合规</span>"
-        if status == "NON_COMPLIANT":
-            return "<span class='status-red'>NON_COMPLIANT / 不合规</span>"
-        if status == "NOT_REQUIRED_DPP":
-            return "<span class='status-grey'>NOT_REQUIRED_DPP / 不强制执行 DPP</span>"
-        return "<span class='status-grey'>" + status + "</span>"
-
-    def risk_html(risk: str) -> str:
-        if risk == "low":
-            return "<span class='status-green'><b>低 / Low</b></span>"
-        if risk == "medium":
-            return "<span style='color:#B26A00; font-weight:800'><b>中 / Medium</b></span>"
-        if risk == "high":
-            return "<span class='status-red'><b>高 / High</b></span>"
-        return "<span class='status-grey'><b>N/A</b></span>"
-
-    rows_html = []
-    for r in audit_results:
-        missing = getattr(r, "missing_fields", []) or []
-        issues = getattr(r, "issues", []) or []
-        if r.status == "NON_COMPLIANT":
-            reasons = "<br/>".join([f"• {x}" for x in missing]) if missing else "• （未提供原因）"
-            reasons_html = reasons
-        elif r.status == "NOT_REQUIRED_DPP":
-            analysis = [x for x in issues if str(x).startswith("Analysis (not mandatory):")]
-            if analysis:
-                reasons_html = "<br/>".join([f"• {x}" for x in analysis[:6]])
-            else:
-                # Fallback: show applicability note (Art. 77(1) exemption).
-                reasons_html = f"• {issues[0]}" if issues else "—"
-        else:
-            reasons_html = "—"
-
-        rows_html.append(
-            "<tr>"
-            f"<td>{r.model}</td>"
-            f"<td>{status_html(r.status)}</td>"
-            f"<td>{risk_html(getattr(r, 'risk_level', 'N/A'))}</td>"
-            f"<td>{reasons_html}</td>"
-            "</tr>"
+def _render_results_table(results):
+    rows = []
+    for r in results:
+        rows.append(
+            {
+                t["model_col"]: r.model,
+                t["status_col"]: r.status,
+                t["risk_col"]: r.risk_level,
+                t["reason_col"]: " | ".join(r.missing_fields or r.issues[:2]),
+            }
         )
-
-    table_html = (
-        "<table style='width:100%; border-collapse:collapse; background:#fff'>"
-        "<thead>"
-        f"{header}"
-        "</thead>"
-        "<tbody>"
-        + "".join(rows_html)
-        + "</tbody>"
-        "</table>"
-    )
-    st.markdown(table_html, unsafe_allow_html=True)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
 
-start_col, help_col = st.columns([3, 1])
-with start_col:
-    start_clicked = st.button(UI["audit_btn"], type="primary", use_container_width=True)
+tab_audit, tab_law, tab_news, tab_case = st.tabs([t["tab_audit"], t["tab_law"], t["tab_news"], t["tab_case"]])
 
-with help_col:
-    st.markdown(f'<div class="small">{UI["audit_hint"]}</div>', unsafe_allow_html=True)
+with tab_audit:
+    uploaded_file = st.sidebar.file_uploader(t["upload_csv"], type=["csv"])
+    only_suspicious = st.sidebar.toggle(t["filter_fraud"], value=False)
+    fraud_filter = st.sidebar.selectbox(t["anomaly_filter"], [t["af_all"], t["af_high"], t["af_unreal"]], index=0)
 
+    csv_rows: List[Dict[str, str]] = []
+    if uploaded_file is not None:
+        csv_bytes = uploaded_file.getvalue()
+        csv_hash = _hash_bytes(csv_bytes)
+        if "csv_hash" not in st.session_state or st.session_state.get("csv_hash") != csv_hash:
+            st.session_state["csv_hash"] = csv_hash
+            st.session_state["csv_rows"] = _parse_csv_bytes(csv_bytes)
+            st.session_state["audit_results"] = None
+            st.session_state["pdf_bytes"] = None
+            st.session_state["pdf_filename"] = None
+        csv_rows = st.session_state["csv_rows"]
+        st.subheader(t["preview"])
+        st.dataframe(csv_rows, use_container_width=True, height=260)
 
-if start_clicked:
-    with st.spinner("正在审计并生成报告..." if is_cn else "Auditing and generating report..."):
-        progress = st.progress(0, text="AI 正在检索法条并比对字段..." if is_cn else "AI is validating legal clauses and data fields...")
-        for p in (15, 35, 55, 75, 90):
-            time.sleep(0.08)
-            progress.progress(p)
-        try:
+    st.subheader(t["manual_entry"])
+    with st.form("manual_single_entry"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            model = st.text_input("model", "MANUAL-EV-001")
+            category = st.selectbox("category", ["EV", "LMT", "INDUSTRIAL"], index=0)
+            capacity_kwh = st.number_input("capacity_kwh", min_value=0.0, value=60.0)
+            manufacturer = st.text_input("manufacturer", "Demo Manufacturer")
+            manufacturer_id = st.text_input("manufacturer_id", "MFG-DEMO01")
+        with col2:
+            unique_identifier = st.text_input("unique_identifier", "EU-UID-MANUAL-001")
+            battery_id = st.text_input("battery_id", "SN-MANUAL-001")
+            manufacture_place = st.text_input("manufacture_place", "DE, Berlin")
+            manufacture_date = st.text_input("manufacture_date", "2026-12")
+            chemistry = st.selectbox("chemistry", ["NMC", "LFP"], index=0)
+        with col3:
+            li = st.number_input("recycled_lithium_pct", min_value=0.0, value=8.0)
+            co = st.number_input("recycled_cobalt_pct", min_value=0.0, value=16.0)
+            ni = st.number_input("recycled_nickel_pct", min_value=0.0, value=6.0)
+            pb = st.number_input("recycled_lead_pct", min_value=0.0, value=85.0)
+            carbon = st.number_input("carbon_footprint_total_kg_co2e", min_value=0.0, value=120.0)
+        submitted = st.form_submit_button(t["manual_submit"], use_container_width=True)
+    if submitted:
+        single = {
+            "model": model,
+            "category": category,
+            "capacity_kwh": capacity_kwh,
+            "manufacturer": manufacturer,
+            "manufacturer_id": manufacturer_id,
+            "unique_identifier": unique_identifier,
+            "battery_id": battery_id,
+            "manufacture_place": manufacture_place,
+            "manufacture_date": manufacture_date,
+            "chemistry": chemistry,
+            "recycled_lithium_pct": li,
+            "recycled_cobalt_pct": co,
+            "recycled_nickel_pct": ni,
+            "recycled_lead_pct": pb,
+            "hazardous_substances_declaration": "declared",
+            "rated_capacity_ah": 180,
+            "nominal_voltage_v": 3.7,
+            "rated_power_w": 600,
+            "self_discharge_rate_pct_per_month": 2.0,
+            "charge_discharge_efficiency_percent": 92,
+            "expected_lifetime_cycles": 1400,
+            "thermal_runaway_prevention": "yes",
+            "extinguishing_agent": "CO2",
+            "explosion_proof_declaration": "yes",
+            "bms_access_permissions": "read+write",
+            "mine_latitude": -11.68,
+            "mine_longitude": 27.5,
+        }
+        r = validate_record(single)
+        st.subheader(t["manual_result"])
+        st.json({"model": r.model, "status": r.status, "risk_level": r.risk_level, "issues": r.issues, "missing_fields": r.missing_fields})
+
+    if st.button(t["run_audit"], type="primary", use_container_width=True, disabled=uploaded_file is None):
+        with st.spinner(t["running"]):
+            progress = st.progress(0, text=t["progress"])
+            for p in (20, 40, 60, 80, 100):
+                time.sleep(0.08)
+                progress.progress(p)
+
             results = [validate_record(row) for row in csv_rows]
-        except Exception as e:
-            st.error(f"审计失败：{e}" if is_cn else f"Audit failed: {e}")
-            st.stop()
+            st.session_state["audit_results"] = results
 
-        # Generate PDF to a temporary file, then read bytes for download
-        pdf_bytes = None
-        safe_client = "".join(ch for ch in client_name if ch.isalnum() or ch in ("-", "_")).strip() or "Client"
-        safe_project = "".join(ch for ch in project_code if ch.isalnum() or ch in ("-", "_")).strip() or "Project"
-        pdf_filename = f"DPP_Audit_Report_{safe_client}_{safe_project}.pdf"
-        try:
+            safe_client = "".join(ch for ch in client_name if ch.isalnum() or ch in ("-", "_")).strip() or "Client"
+            safe_project = "".join(ch for ch in project_code if ch.isalnum() or ch in ("-", "_")).strip() or "Project"
+            pdf_filename = f"DPP_Audit_Report_{safe_client}_{safe_project}.pdf"
             with tempfile.TemporaryDirectory() as td:
                 out_pdf_path = Path(td) / pdf_filename
-                # generate_audit_pdf only uses source_csv.name for display
-                generate_audit_pdf(
-                    results=results,
-                    source_csv=Path(uploaded_file.name),
-                    output_pdf=out_pdf_path,
-                )
-                pdf_bytes = out_pdf_path.read_bytes()
-        except ModuleNotFoundError as e:
-            st.error(str(e))
-            st.stop()
-        except Exception as e:
-            st.error(f"生成 PDF 失败：{e}" if is_cn else f"Failed to generate PDF: {e}")
-            st.stop()
-        progress.progress(100, text="审计完成" if is_cn else "Audit completed")
+                generate_audit_pdf(results=results, source_csv=Path(uploaded_file.name), output_pdf=out_pdf_path, language=lang)
+                st.session_state["pdf_bytes"] = out_pdf_path.read_bytes()
+                st.session_state["pdf_filename"] = pdf_filename
+            progress.empty()
 
-        st.session_state["audit_results"] = results
-        st.session_state["pdf_bytes"] = pdf_bytes
-        st.session_state["pdf_filename"] = pdf_filename
+    if st.session_state.get("audit_results") is not None:
+        results = st.session_state["audit_results"]
+        suspicious = [r for r in results if _passes_fraud_filter(set(getattr(r, "fraud_flags", []) or []), fraud_filter)]
+        display = suspicious if only_suspicious else results
 
+        compliant = sum(1 for r in results if r.status == "COMPLIANT")
+        non = sum(1 for r in results if r.status == "NON_COMPLIANT")
+        ratio = compliant / (compliant + non) if (compliant + non) else 0
+        carbon_values = [(r.metrics.get("carbon_footprint_total_kg_co2e", {}) or {}).get("value") for r in results]
+        carbon_values = [v for v in carbon_values if isinstance(v, (int, float))]
+        avg_cf = sum(carbon_values) / len(carbon_values) if carbon_values else 0.0
+        c1, c2, c3 = st.columns(3)
+        c1.metric(t["metric_rate"], f"{ratio:.1%}")
+        c2.metric(t["metric_carbon"], f"{avg_cf:.2f}")
+        c3.metric(t["metric_risk"], len(suspicious))
 
-if st.session_state.get("audit_results") is not None:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader(UI["overview"])
-
-    results = st.session_state["audit_results"]
-    def _passes_fraud_filter(flags: set[str]) -> bool:
-        if fraud_filter in {"仅 HIGH_RISK", "Only HIGH_RISK"}:
-            return "HIGH_RISK" in flags
-        if fraud_filter in {"仅 DATA_UNREALISTIC", "Only DATA_UNREALISTIC"}:
-            return "DATA_UNREALISTIC" in flags
-        return bool(flags.intersection({"HIGH_RISK", "DATA_UNREALISTIC"}))
-
-    suspicious = [r for r in results if _passes_fraud_filter(set(getattr(r, "fraud_flags", []) or []))]
-    high_risk_geo = [r for r in results if "HIGH_RISK" in (getattr(r, "fraud_flags", []) or [])]
-
-    compliant = sum(1 for r in results if r.status == "COMPLIANT")
-    non_compliant = sum(1 for r in results if r.status == "NON_COMPLIANT")
-    required_total = compliant + non_compliant
-    compliance_ratio = (compliant / required_total) if required_total > 0 else 0.0
-    carbon_values = [
-        (r.metrics.get("carbon_footprint_total_kg_co2e", {}) or {}).get("value")
-        for r in results
-    ]
-    carbon_values = [v for v in carbon_values if isinstance(v, (int, float))]
-    avg_carbon = sum(carbon_values) / len(carbon_values) if carbon_values else 0.0
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("总合规率" if is_cn else "Overall Compliance Rate", f"{compliance_ratio:.1%}")
-    with c2:
-        st.metric("平均碳足迹" if is_cn else "Average Carbon Footprint", f"{avg_carbon:.2f}")
-    with c3:
-        st.metric("风险预警数" if is_cn else "Risk Alerts", len(suspicious))
-
-    # Commercial charts
-    try:
-        import plotly.express as px
-        status_counts = {
-            "COMPLIANT": compliant,
-            "NON_COMPLIANT": non_compliant,
-            "NOT_REQUIRED_DPP": sum(1 for r in results if r.status == "NOT_REQUIRED_DPP"),
-        }
-        pie_df = pd.DataFrame(
-            [{"status": k, "count": v} for k, v in status_counts.items() if v > 0]
-        )
-        if not pie_df.empty:
-            fig_pie = px.pie(
-                pie_df,
-                values="count",
-                names="status",
-                hole=0.58,
-                title="审计结果结构 / Compliance Mix" if is_cn else "Compliance Mix",
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-        compare_rows = []
-        for r in results:
-            li = (r.metrics.get("recycled_lithium_pct", {}) or {}).get("value")
-            co = (r.metrics.get("recycled_cobalt_pct", {}) or {}).get("value")
-            ni = (r.metrics.get("recycled_nickel_pct", {}) or {}).get("value")
-            for mat, val, threshold in [
-                ("Lithium", li, RECYCLED_MIN_PCT["Lithium"]),
-                ("Cobalt", co, RECYCLED_MIN_PCT["Cobalt"]),
-                ("Nickel", ni, RECYCLED_MIN_PCT["Nickel"]),
-            ]:
-                if isinstance(val, (int, float)):
-                    compare_rows.append(
-                        {
-                            "model": r.model,
-                            "material": mat,
-                            "gap_vs_threshold": float(val) - float(threshold),
-                        }
-                    )
-        if compare_rows:
-            cmp_df = pd.DataFrame(compare_rows)
-            fig_bar = px.bar(
-                cmp_df,
-                x="model",
-                y="gap_vs_threshold",
-                color="material",
-                barmode="group",
-                title="回收比例与法案阈值差距（Li/Co/Ni）" if is_cn else "Recycled Content Gap vs Legal Threshold (Li/Co/Ni)",
-                labels={"gap_vs_threshold": "当前值-阈值 (%)" if is_cn else "Current - Threshold (%)", "model": "型号" if is_cn else "Model"},
-            )
-            fig_bar.add_hline(y=0, line_dash="dash", line_color="gray")
-            st.plotly_chart(fig_bar, use_container_width=True)
-    except Exception:
-        st.info("Plotly 图表暂不可用，已回退基础展示。" if is_cn else "Plotly chart unavailable; using basic view.")
-
-    # Horizontal chart for suspicious models.
-    st.markdown("#### 风险侦测图 / Fraud-Risk Focus" if is_cn else "#### Fraud-Risk Focus")
-    suspicious_rows = []
-    for r in suspicious:
-        flags = set(getattr(r, "fraud_flags", []) or [])
-        score = 0
-        if "HIGH_RISK" in flags:
-            score += 1
-        if "DATA_UNREALISTIC" in flags:
-            score += 1
-        suspicious_rows.append({"model": r.model, "risk_score": score, "flags": ", ".join(sorted(flags))})
-
-    if suspicious_rows:
         try:
             import plotly.express as px
-
-            df = pd.DataFrame(suspicious_rows).sort_values("risk_score", ascending=True)
-            fig = px.bar(
-                df,
-                x="risk_score",
-                y="model",
-                orientation="h",
-                color="flags",
-                title="High Risk / Data Unrealistic by Model",
-                labels={"risk_score": "异常标签数量", "model": "型号"},
+            mix = pd.DataFrame(
+                {
+                    "status": ["COMPLIANT", "NON_COMPLIANT", "NOT_REQUIRED_DPP"],
+                    "count": [compliant, non, sum(1 for r in results if r.status == "NOT_REQUIRED_DPP")],
+                }
             )
-            fig.update_layout(height=320, margin=dict(l=20, r=20, t=45, b=20))
-            st.plotly_chart(fig, use_container_width=True)
+            fig1 = px.pie(mix[mix["count"] > 0], names="status", values="count", hole=0.55, title=t["chart_mix"])
+            st.plotly_chart(fig1, use_container_width=True)
+
+            gap_rows = []
+            for r in results:
+                for mat, k, thr in [
+                    ("Lithium", "recycled_lithium_pct", RECYCLED_MIN_PCT["Lithium"]),
+                    ("Cobalt", "recycled_cobalt_pct", RECYCLED_MIN_PCT["Cobalt"]),
+                    ("Nickel", "recycled_nickel_pct", RECYCLED_MIN_PCT["Nickel"]),
+                ]:
+                    val = ((r.metrics.get(k, {}) or {}).get("value"))
+                    if isinstance(val, (int, float)):
+                        gap_rows.append({"model": r.model, "material": mat, "gap": val - thr})
+            if gap_rows:
+                fig2 = px.bar(pd.DataFrame(gap_rows), x="model", y="gap", color="material", barmode="group", title=t["chart_gap"])
+                fig2.add_hline(y=0, line_dash="dash", line_color="gray")
+                st.plotly_chart(fig2, use_container_width=True)
         except Exception:
-            # Fallback when Plotly is unavailable.
-            st.bar_chart(pd.DataFrame(suspicious_rows).set_index("model")["risk_score"])
-    else:
-        st.info("当前批次未发现疑似造假或高风险样本。")
+            pass
 
-    st.divider()
-    st.subheader(UI["result_title"])
-    display_results = results
-    if only_suspicious:
-        display_results = suspicious
-    _render_results_table(display_results)
+        st.subheader(t["result_table"])
+        _render_results_table(display)
+        if st.session_state.get("pdf_bytes"):
+            st.download_button(
+                t["download_pdf"],
+                data=st.session_state["pdf_bytes"],
+                file_name=st.session_state.get("pdf_filename", "DPP_Audit_Report.pdf"),
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
-    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+with tab_law:
+    st.subheader(t["law_title"])
+    st.write(t["law_body"])
 
-    if st.session_state.get("pdf_bytes") is not None:
-        st.download_button(
-            label=UI["download_pdf"],
-            data=st.session_state["pdf_bytes"],
-            file_name=st.session_state.get("pdf_filename") or "DPP_Audit_Report.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    else:
-        st.warning("未找到可下载的 PDF。" if is_cn else "No downloadable PDF found.")
+with tab_news:
+    st.subheader(t["news_title"])
+    st.write(f"1) {t['news_1']}")
+    st.write(f"2) {t['news_2']}")
+    st.write(f"3) {t['news_3']}")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+with tab_case:
+    st.subheader(t["case_title"])
+    st.write(t["case_body"])
 

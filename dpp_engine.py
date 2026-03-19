@@ -1161,6 +1161,224 @@ def iter_csv(path: Path) -> Iterable[Dict[str, Any]]:
             yield row
 
 
+def generate_audit_pdf(
+    *,
+    results: List[DppResult],
+    source_csv: Path,
+    output_pdf: Path,
+    language: str = "zh",
+) -> None:
+    """
+    fpdf2-based PDF renderer with:
+    - language switch (full zh/en UI text)
+    - auto-width table
+    - auto page break for long tables
+    - watermark
+    """
+    try:
+        from fpdf import FPDF
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(str(e) + "\n\nInstall with: pip install fpdf2") from e
+
+    L_ZH = {
+            "title": "欧盟 2023/1542 电池法案合规预审计报告",
+            "grade": "合规等级",
+            "time": "审计时间",
+            "src": "数据来源",
+            "summary": "型号级别审计结果汇总",
+            "model": "型号",
+            "status": "判定结果",
+            "risk": "风险等级",
+            "issues": "问题说明",
+            "radar": "关键指标雷达（六维评分）",
+            "gap": "差额修复清单",
+            "manual": "人工复核建议：潜在欺诈风险",
+        }
+    L_EN = {
+            "title": "EU 2023/1542 Battery Regulation Compliance Pre-Audit Report",
+            "grade": "Compliance Grade",
+            "time": "Audit Time",
+            "src": "Data Source",
+            "summary": "Model-level Audit Summary",
+            "model": "Model",
+            "status": "Status",
+            "risk": "Risk",
+            "issues": "Issues",
+            "radar": "Key Metrics Radar (Six Dimensions)",
+            "gap": "Gap Fixing List",
+            "manual": "Manual Review Recommended (Potential Fraud Risk)",
+        }
+
+    grade = "A"
+    non = sum(1 for r in results if r.status == "NON_COMPLIANT")
+    flagged = sum(1 for r in results if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])))
+    total = len(results) or 1
+    if non / total > 0.35 or flagged > max(1, total // 3):
+        grade = "C"
+    elif non / total > 0.10:
+        grade = "B"
+
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=12)
+
+    # Font registration
+    font_regular = "Helvetica"
+    font_bold = "Helvetica"
+    if language == "zh":
+        zh_font = "/Library/Fonts/Arial Unicode.ttf"
+        if Path(zh_font).exists():
+            pdf.add_font("ArialUnicode", "", zh_font)
+            pdf.add_font("ArialUnicode", "B", zh_font)
+            font_regular = "ArialUnicode"
+            font_bold = "ArialUnicode"
+
+    # If Chinese was requested but a Unicode font is unavailable,
+    # gracefully fall back to English labels to avoid rendering failure.
+    if language == "zh" and font_regular == "Helvetica":
+        L = L_EN
+    else:
+        L = L_ZH if language == "zh" else L_EN
+
+    def watermark():
+        pdf.set_text_color(220, 220, 220)
+        pdf.set_font("Helvetica", "B", 20)
+        with pdf.rotation(30, x=105, y=150):
+            pdf.text(20, 150, "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT")
+        pdf.set_text_color(0, 0, 0)
+
+    # Cover
+    pdf.add_page()
+    watermark()
+    pdf.set_font(font_bold, "B", 18)
+    pdf.multi_cell(0, 10, L["title"])
+    pdf.ln(2)
+    pdf.set_font(font_bold, "B", 14)
+    pdf.cell(0, 9, f"{L['grade']}: {grade}", ln=1)
+    pdf.set_font(font_regular, "", 11)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    pdf.cell(0, 7, f"{L['time']}: {now}", ln=1)
+    pdf.cell(0, 7, f"{L['src']}: {source_csv.name}", ln=1)
+
+    # Summary table
+    pdf.add_page()
+    watermark()
+    pdf.set_font(font_bold, "B", 13)
+    pdf.cell(0, 8, L["summary"], ln=1)
+    pdf.ln(1)
+
+    headers = [L["model"], L["status"], L["risk"], L["issues"]]
+    rows = []
+    for r in results:
+        issues = "; ".join(r.missing_fields or r.issues[:3])
+        if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])):
+            issues = f"{issues} | {L['manual']}"
+        rows.append([r.model, r.status, r.risk_level, issues])
+
+    # auto-width based on header + sample data
+    page_w = 210 - 18 - 18
+    widths = [30, 28, 20, page_w - 30 - 28 - 20]
+    sample_n = min(len(rows), 20)
+    for i in range(3):
+        max_len = len(headers[i])
+        for r in rows[:sample_n]:
+            max_len = max(max_len, len(str(r[i])))
+        widths[i] = max(widths[i], min(45, 4 + max_len * 1.6))
+    # Ensure width budget is always valid and issue-column keeps enough room.
+    base_sum = widths[0] + widths[1] + widths[2]
+    min_issue_col = 70
+    if base_sum > page_w - min_issue_col:
+        scale = (page_w - min_issue_col) / base_sum
+        widths[0] = max(24, widths[0] * scale)
+        widths[1] = max(22, widths[1] * scale)
+        widths[2] = max(18, widths[2] * scale)
+    widths[3] = max(min_issue_col, page_w - widths[0] - widths[1] - widths[2])
+
+    # Header row
+    pdf.set_font(font_bold, "B", 10)
+    for h, w in zip(headers, widths):
+        pdf.set_fill_color(11, 61, 145)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(w, 8, h, border=1, fill=True)
+    pdf.ln(8)
+    pdf.set_text_color(0, 0, 0)
+
+    # Data rows with auto page breaks
+    pdf.set_font(font_regular, "", 9)
+    for r in rows:
+        # estimate row height from issue column
+        issue_text = str(r[3]).replace("_", "_ ").replace("/", "/ ")
+        lines = max(1, int(len(issue_text) / max(1, (widths[3] / 2.2))))
+        row_h = min(26, max(7, lines * 4))
+
+        if pdf.get_y() + row_h > 285:
+            pdf.add_page()
+            watermark()
+            pdf.set_font(font_bold, "B", 10)
+            for h, w in zip(headers, widths):
+                pdf.set_fill_color(11, 61, 145)
+                pdf.set_text_color(255, 255, 255)
+                pdf.cell(w, 8, h, border=1, fill=True)
+            pdf.ln(8)
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font(font_regular, "", 9)
+
+        x0, y0 = pdf.get_x(), pdf.get_y()
+        pdf.cell(widths[0], row_h, str(r[0])[:80], border=1)
+        pdf.cell(widths[1], row_h, str(r[1])[:40], border=1)
+        pdf.cell(widths[2], row_h, str(r[2])[:20], border=1)
+        pdf.set_xy(x0 + widths[0] + widths[1] + widths[2], y0)
+        pdf.multi_cell(widths[3], 4, issue_text, border=1)
+        pdf.set_xy(x0, max(y0 + row_h, pdf.get_y()))
+
+    # Radar text + Gap list
+    pdf.add_page()
+    watermark()
+    pdf.set_font(font_bold, "B", 12)
+    pdf.cell(0, 8, L["radar"], ln=1)
+    metrics = {
+        "Safety": "extinguishing_agent",
+        "Environmental": "carbon_footprint_total_kg_co2e",
+        "Traceability": "unique_identifier",
+        "Recycled": "recycled_lithium_pct",
+        "Performance": "rated_capacity_ah",
+        "BMS": "bms_access_permissions",
+    }
+    mandatory = [r for r in results if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
+    total_m = len(mandatory) or 1
+    pdf.set_font(font_regular, "", 10)
+    for dim, key in metrics.items():
+        met = sum(1 for r in mandatory if ((r.metrics.get(key, {}) or {}).get("met") is True))
+        score = met / total_m
+        bars = "#" * int(round(score * 20))
+        pdf.cell(0, 7, f"{dim}: {met}/{total_m} [{bars:<20}]", ln=1)
+
+    pdf.ln(4)
+    pdf.set_font(font_bold, "B", 12)
+    pdf.set_x(pdf.l_margin)
+    pdf.cell(0, 8, L["gap"], ln=1)
+    pdf.set_font(font_regular, "", 10)
+    dept_actions = {
+        "recycled_": "Procurement & Sustainability: provide recycled-material proof and update declarations.",
+        "carbon_footprint": "LCA/ESG: recalculate and verify carbon footprint data.",
+        "bms_access": "BMS Team: disclose read/write access policy.",
+        "manufacturer_id": "Master Data Team: repair manufacturer identity format and registry consistency.",
+        "extinguishing_agent": "EHS Team: complete safety extinguishing guidance field.",
+    }
+    issue_pool = [m for r in results for m in (r.missing_fields or [])]
+    used = set()
+    for issue in issue_pool:
+        for token, action in dept_actions.items():
+            if token in issue and action not in used:
+                used.add(action)
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(0, 6, f"- {action}")
+    if not used:
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 6, "- No critical gap found; keep periodic evidence updates.")
+
+    pdf.output(str(output_pdf))
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
         description="EU 2023/1542 Battery DPP checker (Art. 77 + Annex XIII).",
