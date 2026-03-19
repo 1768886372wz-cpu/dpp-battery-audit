@@ -29,6 +29,10 @@ import pandas as pd
 from dpp_engine import RECYCLED_MIN_PCT, generate_audit_pdf, validate_record
 
 
+def _hash_bytes(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
 st.set_page_config(
     page_title="中资出海电池 DPP 合规预审计平台",
     layout="wide",
@@ -79,8 +83,8 @@ UI = {
     "report_no": "报告编号" if is_cn else "Report No.",
 }
 
-client_name = st.sidebar.text_input(UI["client_name"], value="Demo Client")
-project_code = st.sidebar.text_input(UI["project_code"], value="DPP-2026-PRE")
+client_name = (st.sidebar.text_input(UI["client_name"], value="Demo Client") or "Demo Client").strip()
+project_code = (st.sidebar.text_input(UI["project_code"], value="DPP-2026-PRE") or "DPP-2026-PRE").strip()
 
 report_no = f"{project_code}-{_hash_bytes((client_name + project_code).encode())[:8].upper()}"
 
@@ -112,10 +116,6 @@ def _parse_csv_bytes(csv_bytes: bytes) -> List[Dict[str, str]]:
     text = csv_bytes.decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(StringIO(text))
     return [row for row in reader]
-
-
-def _hash_bytes(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
 
 
 uploaded_file = st.sidebar.file_uploader(UI["upload"], type=["csv"])
