@@ -34,6 +34,64 @@ RECYCLED_MIN_PCT = {
 }
 RECYCLED_LEGAL_REF = "Article 8(2)(a)-(d)"
 
+# Full Annex XIII-oriented field map for backend normalization and audit tracing.
+# This structure is the single source of truth for the engine's expected inputs.
+DPP_FIELD_MAP: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "public_information": {
+        "unique_identifier": {"aliases": ["unique_identifier", "battery_passport_id", "uid", "唯一标识"], "legal_ref": "Article 77(3)"},
+        "battery_id": {"aliases": ["battery_id", "battery_identifier", "serial", "battery_model_id", "电池识别码"], "legal_ref": "Annex VI Part A(2) via Annex XIII(1)(a)"},
+        "manufacturer_id": {"aliases": ["manufacturer_id", "mfg_id", "制造商ID"], "legal_ref": "Heuristic anti-fraud identity check (not an explicit statutory field in Annex XIII list)"},
+        "manufacturer": {"aliases": ["manufacturer", "manufacturer_name", "制造商"], "legal_ref": "Annex VI Part A(1) via Annex XIII(1)(a)"},
+        "manufacture_place": {"aliases": ["manufacture_place", "place_of_manufacture", "生产地"], "legal_ref": "Annex VI Part A(3) via Annex XIII(1)(a)"},
+        "manufacture_date": {"aliases": ["manufacture_date", "date_of_manufacture", "生产日期"], "legal_ref": "Annex VI Part A(4) via Annex XIII(1)(a)"},
+        "category": {"aliases": ["category", "battery_category", "类别"], "legal_ref": "Annex VI Part A(2) via Annex XIII(1)(a)"},
+    },
+    "materials_and_compliance": {
+        "recycled_lithium_pct": {"aliases": ["recycled_lithium_pct", "lithium_pct"], "legal_ref": "Article 8(2)(c)", "min": 6.0},
+        "recycled_cobalt_pct": {"aliases": ["recycled_cobalt_pct", "cobalt_pct"], "legal_ref": "Article 8(2)(a)", "min": 16.0},
+        "recycled_nickel_pct": {"aliases": ["recycled_nickel_pct", "nickel_pct"], "legal_ref": "Article 8(2)(d)", "min": 6.0},
+        "recycled_lead_pct": {"aliases": ["recycled_lead_pct", "lead_pct"], "legal_ref": "Article 8(2)(b)", "min": 85.0},
+        "hazardous_substances_declaration": {"aliases": ["hazardous_substances_declaration", "hazardous_substances", "hazardous", "危险物质声明"], "legal_ref": "Annex XIII(1)(b)"},
+    },
+    "performance_and_durability": {
+        "rated_capacity_ah": {"aliases": ["rated_capacity_ah", "rated_capacity", "额定容量"], "legal_ref": "Annex XIII(1)(a)(g)"},
+        "nominal_voltage_v": {"aliases": ["nominal_voltage_v", "nominal_voltage", "标称电压"], "legal_ref": "Annex XIII(1)(a)(h)"},
+        "rated_power_w": {"aliases": ["rated_power_w", "power_w", "额定功率"], "legal_ref": "Annex XIII(1)(a)(i)"},
+        "self_discharge_rate_pct_per_month": {"aliases": ["self_discharge_rate_pct_per_month", "self_discharge_rate", "自放电率"], "legal_ref": "Annex VII Part B(4)"},
+        "expected_lifetime_cycles": {"aliases": ["expected_lifetime_cycles", "cycles", "预期寿命_cycles"], "legal_ref": "Annex XIII(1)(a)(j)"},
+        "charge_discharge_efficiency_percent": {"aliases": ["charge_discharge_efficiency_percent", "efficiency_percent", "充放电效率_percent", "充放电效率"], "legal_ref": "Annex XIII(1)(a)(n)"},
+    },
+    "safety": {
+        "thermal_runaway_prevention": {"aliases": ["thermal_runaway_prevention", "thermal_runaway_control", "热失控预防"], "legal_ref": "Heuristic safety-control data check (industry best practice)"},
+        "extinguishing_agent": {"aliases": ["extinguishing_agent", "Extinguishing Agent", "灭火剂类型"], "legal_ref": "Annex VI Part A(9) via Annex XIII(1)(a)"},
+        "explosion_proof_declaration": {"aliases": ["explosion_proof_declaration", "explosion_proof", "防爆声明"], "legal_ref": "Heuristic safety-control data check (industry best practice)"},
+        "bms_access_permissions": {"aliases": ["bms_access_permissions", "bms_access", "bms_rw_permissions", "BMS访问权限"], "legal_ref": "Article 14"},
+    },
+    "traceability_and_sourcing": {
+        "mine_latitude": {"aliases": ["mine_latitude", "source_mine_lat", "矿山纬度"], "legal_ref": "Heuristic sourcing-risk check (due diligence context)"},
+        "mine_longitude": {"aliases": ["mine_longitude", "source_mine_lon", "矿山经度"], "legal_ref": "Heuristic sourcing-risk check (due diligence context)"},
+        "chemistry": {"aliases": ["chemistry", "电化学体系"], "legal_ref": "Annex XIII(1)(b)"},
+        "carbon_footprint_total_kg_co2e": {"aliases": ["carbon_footprint_total_kg_co2e", "carbon_footprint_total", "carbon_footprint_kg_co2e_total", "生命周期碳排放总量", "碳足迹_总量_kgco2e"], "legal_ref": "Annex XIII(1)(c) / Article 7"},
+    },
+}
+
+# Approximate benchmark lower bounds for plausibility checks, not legal thresholds.
+# Used only for anti-fraud "Data Unrealistic" flag.
+CARBON_FOOTPRINT_MIN_BY_CHEMISTRY = {
+    # theoretical floor in kg CO2e per kWh
+    "LFP": 30.0,
+    "NMC": 40.0,
+}
+
+# Simplified mining-area bounding boxes for anti-fraud coordinate checks.
+# (lat_min, lat_max, lon_min, lon_max)
+KNOWN_LITHIUM_COBALT_MINING_ZONES: List[Tuple[float, float, float, float]] = [
+    (-30.0, -15.0, -72.0, -65.0),   # Chile/Argentina lithium triangle (coarse)
+    (-25.0, -18.0, 16.0, 30.0),     # Southern Africa lithium belt (coarse)
+    (-15.0, 5.0, 12.0, 33.0),       # DRC cobalt region (coarse)
+    (-33.0, -20.0, 114.0, 122.0),   # Western Australia lithium region (coarse)
+]
+
 
 def _norm(s: Any) -> str:
     return "" if s is None else str(s).strip()
@@ -91,6 +149,7 @@ class DppResult:
     issues: List[str]  # human-readable, must include legal references
     missing_fields: List[str]  # subset of issues focused on "missing/invalid required fields"
     metrics: Dict[str, Any]  # for radar text summary
+    fraud_flags: List[str]  # e.g. HIGH_RISK, DATA_UNREALISTIC
 
     def to_text(self) -> str:
         lines = [
@@ -104,6 +163,8 @@ class DppResult:
             lines.append("Findings:")
             for i in self.issues:
                 lines.append(f"- {i}")
+        if self.fraud_flags:
+            lines.append("Fraud Flags: " + ", ".join(self.fraud_flags))
         return "\n".join(lines)
 
 
@@ -127,6 +188,8 @@ def generate_audit_pdf(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
+        from reportlab.graphics.shapes import Drawing, Line, Polygon, String
+        from reportlab.graphics import renderPDF
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.cidfonts import UnicodeCIDFont
         from reportlab.pdfbase.ttfonts import TTFont
@@ -258,8 +321,164 @@ def generate_audit_pdf(
         textColor=colors.HexColor("#666666"),
         fontName=cjk_font,
     )
+    quote_style = ParagraphStyle(
+        "Quote",
+        parent=small_grey,
+        fontName=cjk_font,
+        fontSize=9.2,
+        leading=12.5,
+        textColor=colors.HexColor("#3F3F46"),
+    )
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    def _grade_label() -> str:
+        total = len(results) or 1
+        non = sum(1 for r in results if r.status == "NON_COMPLIANT")
+        flagged = sum(1 for r in results if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])))
+        non_ratio = non / total
+        if non_ratio <= 0.10 and flagged == 0:
+            return "A / 合规"
+        if non_ratio <= 0.35 and flagged <= max(1, total // 4):
+            return "B / 警告"
+        return "C / 拒绝"
+
+    compliance_grade = _grade_label()
+
+    legal_quotes = {
+        "recycled_lithium_pct": (
+            "Article 8(2)(c): \"... shall demonstrate that those batteries contain ... (c) 6 % lithium.\"",
+            "Threshold: **>= 6% lithium**",
+        ),
+        "recycled_cobalt_pct": (
+            "Article 8(2)(a): \"... shall demonstrate that those batteries contain ... (a) 16 % cobalt.\"",
+            "Threshold: **>= 16% cobalt**",
+        ),
+        "recycled_nickel_pct": (
+            "Article 8(2)(d): \"... shall demonstrate that those batteries contain ... (d) 6 % nickel.\"",
+            "Threshold: **>= 6% nickel**",
+        ),
+        "recycled_lead_pct": (
+            "Article 8(2)(b): \"... shall demonstrate that those batteries contain ... (b) 85 % lead.\"",
+            "Threshold: **>= 85% lead**",
+        ),
+        "carbon_footprint": (
+            "Annex XIII(1)(c): \"A battery passport shall include ... the carbon footprint information referred to in Article 7(1) and (2).\"",
+            "Threshold: **must be present and physically plausible**",
+        ),
+        "bms_access_permissions": (
+            "Article 14: information on the state of health shall be made available for relevant battery categories.",
+            "Threshold: **read/write access disclosure required by this audit rule**",
+        ),
+        "manufacturer_id": (
+            "Article 77(4): \"... ensure that the information in the battery passport is accurate, complete and up to date.\"",
+            "Threshold: **traceability identity must pass format checks**",
+        ),
+        "extinguishing_agent": (
+            "Annex VI Part A(9): label information includes \"usable extinguishing agent\" (via Annex XIII(1)(a)).",
+            "Threshold: **field must be present**",
+        ),
+        "hazardous_substances_declaration": (
+            "Annex XIII(1)(b): battery passport includes material composition and hazardous substances information.",
+            "Threshold: **declaration must be present**",
+        ),
+    }
+
+    def _issue_quote(issue: str) -> Tuple[str, str]:
+        key_map = [
+            ("recycled_lithium_pct", "recycled_lithium_pct"),
+            ("recycled_cobalt_pct", "recycled_cobalt_pct"),
+            ("recycled_nickel_pct", "recycled_nickel_pct"),
+            ("recycled_lead_pct", "recycled_lead_pct"),
+            ("carbon_footprint", "carbon_footprint"),
+            ("bms_access_permissions", "bms_access_permissions"),
+            ("manufacturer_id", "manufacturer_id"),
+            ("extinguishing_agent", "extinguishing_agent"),
+            ("hazardous_substances_declaration", "hazardous_substances_declaration"),
+        ]
+        for token, key in key_map:
+            if token in issue:
+                return legal_quotes[key]
+        return (
+            "Article 77(4): \"... information in the battery passport is accurate, complete and up to date.\"",
+            "Threshold: **complete and verifiable data required**",
+        )
+
+    def _build_radar_drawing(results_for_radar: List[DppResult]) -> Drawing:
+        mandatory = [r for r in results_for_radar if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
+        total = len(mandatory) or 1
+
+        def _score(metric_keys: List[str]) -> float:
+            met = 0
+            for r in mandatory:
+                ok = True
+                for k in metric_keys:
+                    ok = ok and (((r.metrics or {}).get(k, {}) or {}).get("met") is True)
+                if ok:
+                    met += 1
+            return met / total
+
+        dimensions = [
+            ("Safety", _score(["extinguishing_agent", "thermal_runaway_prevention", "explosion_proof_declaration"])),
+            ("Environmental", _score(["carbon_footprint_total_kg_co2e", "carbon_physical_plausibility"])),
+            ("Traceability", _score(["unique_identifier", "manufacturer_id", "mine_coordinates"])),
+            ("Recycled", _score(["recycled_lithium_pct", "recycled_cobalt_pct", "recycled_nickel_pct", "recycled_lead_pct"])),
+            ("Performance", _score(["rated_capacity_ah", "nominal_voltage_v", "rated_power_w", "expected_lifetime_cycles"])),
+            ("BMS Access", _score(["bms_access_permissions"])),
+        ]
+
+        cx, cy, rmax = 160, 120, 70
+        n = len(dimensions)
+        drawing = Drawing(320, 240)
+
+        # grid rings
+        for scale in [0.25, 0.5, 0.75, 1.0]:
+            pts = []
+            for i in range(n):
+                angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
+                rr = rmax * scale
+                pts.extend([cx + rr * __import__("math").cos(angle), cy + rr * __import__("math").sin(angle)])
+            drawing.add(Polygon(points=pts, fillColor=None, strokeColor=colors.HexColor("#D1D5DB"), strokeWidth=0.6))
+
+        # axis lines + labels
+        for i, (name, _) in enumerate(dimensions):
+            angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
+            x = cx + rmax * __import__("math").cos(angle)
+            y = cy + rmax * __import__("math").sin(angle)
+            drawing.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#9CA3AF"), strokeWidth=0.6))
+            lx = cx + (rmax + 14) * __import__("math").cos(angle)
+            ly = cy + (rmax + 14) * __import__("math").sin(angle)
+            drawing.add(String(lx - 18, ly - 3, name, fontName="Helvetica", fontSize=7.5, fillColor=colors.HexColor("#374151")))
+
+        # data polygon
+        data_pts = []
+        for i, (_, score) in enumerate(dimensions):
+            angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
+            rr = rmax * max(0.0, min(1.0, score))
+            data_pts.extend([cx + rr * __import__("math").cos(angle), cy + rr * __import__("math").sin(angle)])
+        drawing.add(Polygon(points=data_pts, strokeColor=colors.HexColor("#4F46E5"), fillColor=colors.HexColor("#A5B4FC"), fillOpacity=0.35, strokeWidth=1.2))
+        return drawing
+
+    def _build_gap_fixing_list(results_for_gaps: List[DppResult]) -> List[str]:
+        issue_pool = [m for r in results_for_gaps for m in (r.missing_fields or [])]
+        dept_map = [
+            ("recycled_", "Procurement & Sustainability Team", "Collect supplier recycled-material certificates and update recycled-content declarations."),
+            ("carbon_footprint", "LCA/ESG Team", "Recalculate product carbon footprint and provide audited methodology evidence."),
+            ("bms_access_permissions", "BMS Firmware & Diagnostics Team", "Publish read/write access policy and technical interface control note."),
+            ("extinguishing_agent", "EHS & Product Safety Team", "Provide extinguishing-agent specification and hazard response instructions."),
+            ("manufacturer_id", "Master Data Governance Team", "Fix manufacturer identity schema and traceability key integrity."),
+            ("hazardous_substances_declaration", "Compliance Documentation Team", "Complete hazardous-substance declaration linked to BOM/SDS records."),
+            ("rated_capacity_ah", "R&D Validation Team", "Provide validated electrochemical performance measurements in technical dossier."),
+        ]
+        actions: Dict[str, str] = {}
+        for issue in issue_pool:
+            for token, dept, action in dept_map:
+                if token in issue and dept not in actions:
+                    actions[dept] = action
+        if not actions:
+            actions["Compliance PMO"] = "No critical gaps detected. Maintain periodic data-quality monitoring and evidence retention."
+        return [f"{dept}: {action}" for dept, action in actions.items()]
+
     doc = SimpleDocTemplate(
         str(output_pdf),
         pagesize=A4,
@@ -277,6 +496,8 @@ def generate_audit_pdf(
     story.append(Spacer(1, 38 * mm))
     story.append(Paragraph("欧盟 2023/1542 电池法案合规预审计报告", title_style))
     story.append(Paragraph("EU 2023/1542 Battery Regulation – Compliance Pre‑Audit Report", subtitle_style))
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(f"<b>Compliance Grade / 合规等级：{compliance_grade}</b>", h_style))
     story.append(Spacer(1, 10 * mm))
     story.append(Paragraph(f"审计时间 / Audit Time：{now}", subtitle_style))
     story.append(Paragraph(f"数据来源 / Data Source：{source_csv.name}", subtitle_style))
@@ -300,6 +521,7 @@ def generate_audit_pdf(
         "不合规原因与条文引用 / Non‑compliance Reasons & Legal References",
     ]
     rows: List[List[Any]] = [header]
+    flagged_row_indices: List[int] = []
     for r in results:
         if r.status == "COMPLIANT":
             status_cell = Paragraph("<b>COMPLIANT / 合规</b>", status_green)
@@ -317,24 +539,45 @@ def generate_audit_pdf(
         else:
             risk_cell = Paragraph("<b>N/A</b>", risk_na)
 
+        is_flagged = any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or []))
+
         if r.status == "NON_COMPLIANT":
-            reasons = "<br/>".join([f"• {x}" for x in (r.missing_fields or [])]) if r.missing_fields else "• （未提供原因）"
+            if r.missing_fields:
+                reason_items = []
+                for x in r.missing_fields:
+                    quote, threshold = _issue_quote(x)
+                    reason_items.append(f"• {x}<br/>  \"{quote}\"<br/>  {threshold}")
+                reasons = "<br/><br/>".join(reason_items)
+            else:
+                reasons = "• （未提供原因）"
+            if is_flagged:
+                reasons += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
             cell = Paragraph(reasons, red)
         elif r.status == "NOT_REQUIRED_DPP":
             # Show a short analysis line set.
             analysis = [x for x in (r.issues or []) if str(x).startswith("Analysis (not mandatory):")]
             if not analysis:
                 if r.issues:
-                    cell = Paragraph("• " + str(r.issues[0]), small_grey)
+                    txt = "• " + str(r.issues[0])
+                    if is_flagged:
+                        txt += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
+                    cell = Paragraph(txt, small_grey)
                 else:
                     cell = Paragraph("—", small_grey)
             else:
                 reasons = "<br/>".join([f"• {x}" for x in analysis[:6]])
+                if is_flagged:
+                    reasons += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
                 cell = Paragraph(reasons, small_grey)
         else:
-            cell = Paragraph("—", small_grey)
+            txt = "—"
+            if is_flagged:
+                txt = "<b>Manual Review Recommended (Potential Fraud Risk)</b>"
+            cell = Paragraph(txt, small_grey)
 
         rows.append([Paragraph(_norm(r.model), normal), status_cell, risk_cell, cell])
+        if is_flagged:
+            flagged_row_indices.append(len(rows) - 1)
 
     table = Table(
         rows,
@@ -360,6 +603,15 @@ def generate_audit_pdf(
             ]
         )
     )
+    if flagged_row_indices:
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, row), (-1, row), 1.2, colors.HexColor("#7E57C2"))
+                    for row in flagged_row_indices
+                ]
+            )
+        )
     story.append(table)
 
     # Key metrics radar (text summary)
@@ -370,6 +622,9 @@ def generate_audit_pdf(
             h_style,
         )
     )
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph("风险雷达图 / Risk Radar", h_style))
+    story.append(_build_radar_drawing(results))
 
     mandatory = [r for r in results if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
     total = len(mandatory) if mandatory else 1
@@ -435,6 +690,11 @@ def generate_audit_pdf(
     for item in advice_items:
         story.append(Paragraph("• " + item, normal))
 
+    story.append(Spacer(1, 8 * mm))
+    story.append(Paragraph("Gap Fixing List / 差额修复清单", h_style))
+    for line in _build_gap_fixing_list(results):
+        story.append(Paragraph("• " + line, normal))
+
     story.append(Spacer(1, 6 * mm))
     story.append(
         Paragraph(
@@ -445,6 +705,15 @@ def generate_audit_pdf(
 
     def _footer(canvas, doc_obj):
         canvas.saveState()
+        # Watermark background
+        canvas.setFillColor(colors.Color(0.65, 0.65, 0.65, alpha=0.15))
+        canvas.setFont("Helvetica-Bold", 24)
+        canvas.translate(105 * mm, 150 * mm)
+        canvas.rotate(35)
+        canvas.drawCentredString(0, 0, "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT")
+        canvas.rotate(-35)
+        canvas.translate(-105 * mm, -150 * mm)
+
         canvas.setFont(cjk_font, 9)
         canvas.setFillColor(colors.HexColor("#666666"))
         canvas.drawString(18 * mm, 10 * mm, f"DPP Audit Report • {source_csv.name}")
@@ -505,68 +774,128 @@ def _present_nonempty(value: Any) -> bool:
     return _norm(value) != ""
 
 
+def _get_field(rec: Dict[str, Any], module: str, key: str) -> Any:
+    info = DPP_FIELD_MAP[module][key]
+    for alias in info["aliases"]:
+        if alias in rec and _norm(rec.get(alias)) != "":
+            return rec.get(alias)
+    return None
+
+
+def validate_coordinates(latitude: Optional[float], longitude: Optional[float]) -> Tuple[bool, str]:
+    """
+    Anti-fraud geolocation heuristic check:
+    If declared mine coordinates are outside known lithium/cobalt mining areas,
+    return High Risk.
+    """
+    if latitude is None or longitude is None:
+        return False, "Missing mine coordinates; cannot validate sourcing geolocation."
+
+    in_known_zone = any(
+        lat_min <= latitude <= lat_max and lon_min <= longitude <= lon_max
+        for lat_min, lat_max, lon_min, lon_max in KNOWN_LITHIUM_COBALT_MINING_ZONES
+    )
+    if in_known_zone:
+        return True, "Mine coordinates are within known lithium/cobalt mining regions."
+    return False, "Mine coordinates are outside known lithium/cobalt mining regions (High Risk)."
+
+
+def validate_physical_carbon_floor(chemistry: str, carbon_footprint_total: Optional[float]) -> Tuple[bool, str]:
+    """
+    Anti-fraud plausibility heuristic:
+    If reported carbon footprint is below chemistry-specific physical floor,
+    flag as Data Unrealistic.
+    """
+    c = _norm(chemistry).upper()
+    if carbon_footprint_total is None:
+        return False, "Carbon footprint missing; cannot run physical plausibility check."
+    if c not in CARBON_FOOTPRINT_MIN_BY_CHEMISTRY:
+        return True, f"No chemistry floor configured for {c}; plausibility check skipped."
+
+    floor = CARBON_FOOTPRINT_MIN_BY_CHEMISTRY[c]
+    if carbon_footprint_total < floor:
+        return False, f"Data Unrealistic: carbon footprint {carbon_footprint_total} is below {c} physical floor {floor}."
+    return True, f"Carbon footprint is above {c} physical floor ({floor})."
+
+
+def validate_manufacturer_id(manufacturer_id: str) -> Tuple[bool, str]:
+    """
+    Simple structural heuristic validation for manufacturer IDs.
+    Expected format: MFG-XXXXXX (at least 6 uppercase alnum chars after prefix).
+    """
+    mid = _norm(manufacturer_id)
+    if not mid:
+        return False, "manufacturer_id missing."
+    if re.fullmatch(r"MFG-[A-Z0-9]{6,}", mid):
+        return True, "manufacturer_id format is valid."
+    return False, f"manufacturer_id '{mid}' failed format validation."
+
+
+def _compute_carbon_intensity_kg_per_kwh(
+    rec: Dict[str, Any],
+    carbon_footprint_total: Optional[float],
+    capacity_kwh: Optional[float],
+) -> Optional[float]:
+    direct = _parse_float(rec.get("carbon_footprint_kg_co2e_per_kwh") or rec.get("carbon_intensity_kg_per_kwh"))
+    if direct is not None:
+        return direct
+    # Fallback assumption for heterogeneous client datasets:
+    # many feeds already provide a carbon-intensity-like value in this column.
+    if carbon_footprint_total is not None:
+        return carbon_footprint_total
+    return None
+
+
 def validate_record(rec: Dict[str, Any]) -> DppResult:
     model = _norm(rec.get("model") or rec.get("battery_model") or rec.get("型号") or rec.get("Model"))
     if not model:
         model = "<unknown>"
 
-    category = _norm(rec.get("category") or rec.get("battery_category") or rec.get("类别"))
+    category = _norm(_get_field(rec, "public_information", "category"))
     capacity_kwh = _parse_float(rec.get("capacity_kwh") or rec.get("capacity_kWh") or rec.get("capacity") or rec.get("容量_kwh"))
 
     dpp_required, applicability_note = dpp_applicability(category, capacity_kwh)
 
-    # Shared parsing: these keys are required for the upgraded audit dimensions.
-    unique_identifier = _norm(
-        rec.get("unique_identifier")
-        or rec.get("battery_passport_id")
-        or rec.get("uid")
-        or rec.get("唯一标识")
-    )
-    manufacturer = _norm(rec.get("manufacturer") or rec.get("manufacturer_name") or rec.get("制造商"))
-    manufacture_place = _norm(rec.get("manufacture_place") or rec.get("place_of_manufacture") or rec.get("生产地"))
-    manufacture_date_raw = rec.get("manufacture_date") or rec.get("date_of_manufacture") or rec.get("生产日期")
-    manufacture_date = _parse_yyyy_mm(manufacture_date_raw)
+    # Public information
+    unique_identifier = _norm(_get_field(rec, "public_information", "unique_identifier"))
+    battery_id = _norm(_get_field(rec, "public_information", "battery_id"))
+    manufacturer_id = _norm(_get_field(rec, "public_information", "manufacturer_id"))
+    manufacturer = _norm(_get_field(rec, "public_information", "manufacturer"))
+    manufacture_place = _norm(_get_field(rec, "public_information", "manufacture_place"))
+    manufacture_date = _parse_yyyy_mm(_get_field(rec, "public_information", "manufacture_date"))
 
-    battery_id = _norm(
-        rec.get("battery_id")
-        or rec.get("battery_identifier")
-        or rec.get("serial")
-        or rec.get("battery_model_id")
-        or rec.get("电池识别码")
-    )
+    # Materials and compliance
+    li_pct = _parse_percent_to_pct(_get_field(rec, "materials_and_compliance", "recycled_lithium_pct"))
+    co_pct = _parse_percent_to_pct(_get_field(rec, "materials_and_compliance", "recycled_cobalt_pct"))
+    ni_pct = _parse_percent_to_pct(_get_field(rec, "materials_and_compliance", "recycled_nickel_pct"))
+    pb_pct = _parse_percent_to_pct(_get_field(rec, "materials_and_compliance", "recycled_lead_pct"))
+    hazardous_decl = _norm(_get_field(rec, "materials_and_compliance", "hazardous_substances_declaration"))
 
-    # Recycled content
-    li_pct = _parse_percent_to_pct(rec.get("recycled_lithium_pct") or rec.get("lithium_pct"))
-    co_pct = _parse_percent_to_pct(rec.get("recycled_cobalt_pct") or rec.get("cobalt_pct"))
-    ni_pct = _parse_percent_to_pct(rec.get("recycled_nickel_pct") or rec.get("nickel_pct"))
-    pb_pct = _parse_percent_to_pct(rec.get("recycled_lead_pct") or rec.get("lead_pct"))
-
-    # Technical parameters
-    rated_capacity_ah = _parse_float(rec.get("rated_capacity_ah") or rec.get("rated_capacity") or rec.get("额定容量"))
-    nominal_voltage_v = _parse_float(rec.get("nominal_voltage_v") or rec.get("nominal_voltage") or rec.get("标称电压"))
-    efficiency_pct = _parse_float(
-        rec.get("charge_discharge_efficiency_percent")
-        or rec.get("efficiency_percent")
-        or rec.get("充放电效率_percent")
-        or rec.get("充放电效率")
-    )
-    expected_lifetime_cycles = _parse_float(rec.get("expected_lifetime_cycles") or rec.get("cycles") or rec.get("预期寿命_cycles"))
+    # Performance and durability
+    rated_capacity_ah = _parse_float(_get_field(rec, "performance_and_durability", "rated_capacity_ah"))
+    nominal_voltage_v = _parse_float(_get_field(rec, "performance_and_durability", "nominal_voltage_v"))
+    rated_power_w = _parse_float(_get_field(rec, "performance_and_durability", "rated_power_w"))
+    self_discharge = _parse_float(_get_field(rec, "performance_and_durability", "self_discharge_rate_pct_per_month"))
+    expected_lifetime_cycles = _parse_float(_get_field(rec, "performance_and_durability", "expected_lifetime_cycles"))
+    efficiency_pct = _parse_float(_get_field(rec, "performance_and_durability", "charge_discharge_efficiency_percent"))
 
     # Safety
-    extinguishing_agent = _norm(rec.get("extinguishing_agent") or rec.get("Extinguishing Agent") or rec.get("灭火剂类型"))
+    thermal_runaway = _norm(_get_field(rec, "safety", "thermal_runaway_prevention"))
+    extinguishing_agent = _norm(_get_field(rec, "safety", "extinguishing_agent"))
+    explosion_decl = _norm(_get_field(rec, "safety", "explosion_proof_declaration"))
+    bms_access = _norm(_get_field(rec, "safety", "bms_access_permissions"))
 
-    # Carbon footprint
-    carbon_footprint_total = _parse_float(
-        rec.get("carbon_footprint_total_kg_co2e")
-        or rec.get("carbon_footprint_total")
-        or rec.get("carbon_footprint_kg_co2e_total")
-        or rec.get("生命周期碳排放总量")
-        or rec.get("碳足迹_总量_kgco2e")
-    )
+    # Traceability + carbon
+    chemistry = _norm(_get_field(rec, "traceability_and_sourcing", "chemistry"))
+    mine_lat = _parse_float(_get_field(rec, "traceability_and_sourcing", "mine_latitude"))
+    mine_lon = _parse_float(_get_field(rec, "traceability_and_sourcing", "mine_longitude"))
+    carbon_footprint_total = _parse_float(_get_field(rec, "traceability_and_sourcing", "carbon_footprint_total_kg_co2e"))
+    carbon_intensity_kg_per_kwh = _compute_carbon_intensity_kg_per_kwh(rec, carbon_footprint_total, capacity_kwh)
 
     issues: List[str] = []
     missing: List[str] = []
     metrics: Dict[str, Any] = {}
+    fraud_flags: List[str] = []
 
     # Applicability
     issues.append(applicability_note)
@@ -602,6 +931,10 @@ def validate_record(rec: Dict[str, Any]) -> DppResult:
     if not _present_nonempty(unique_identifier):
         basic_ok = False
         missing.append("unique_identifier (QR-linked passport identifier) (Art. 77(3))")
+    manufacturer_id_ok, manufacturer_id_note = validate_manufacturer_id(manufacturer_id)
+    if not manufacturer_id_ok:
+        basic_ok = False
+        missing.append("manufacturer_id invalid or missing (traceability identity control)")
 
     # Technical checks
     tech_ok = True
@@ -617,18 +950,46 @@ def validate_record(rec: Dict[str, Any]) -> DppResult:
     if expected_lifetime_cycles is None or expected_lifetime_cycles <= 0:
         tech_ok = False
         missing.append("expected_lifetime_cycles (Annex XIII(1)(a)(j))")
+    if rated_power_w is None or rated_power_w <= 0:
+        tech_ok = False
+        missing.append("rated_power_w (Annex XIII(1)(a)(i))")
+    if self_discharge is None or self_discharge < 0 or self_discharge > 100:
+        tech_ok = False
+        missing.append("self_discharge_rate_pct_per_month (Annex VII Part B(4))")
 
     # Safety
     safety_ok = True
     if not _present_nonempty(extinguishing_agent):
         safety_ok = False
         missing.append("extinguishing_agent (Annex VI Part A(9) via Annex XIII(1)(a))")
+    if not _present_nonempty(thermal_runaway):
+        safety_ok = False
+        missing.append("thermal_runaway_prevention (Safety info required by Annex XIII safety scope)")
+    if not _present_nonempty(explosion_decl):
+        safety_ok = False
+        missing.append("explosion_proof_declaration (Safety info required by Annex XIII safety scope)")
+
+    # BMS access permissions check (Article 14)
+    bms_ok = True
+    bms_lower = bms_access.lower()
+    if not bms_lower or ("read" not in bms_lower and "r" not in bms_lower):
+        bms_ok = False
+        missing.append("bms_access_permissions missing read permission disclosure (Article 14)")
+    if not bms_lower or ("write" not in bms_lower and "w" not in bms_lower):
+        bms_ok = False
+        missing.append("bms_access_permissions missing write permission disclosure (Article 14)")
 
     # Carbon
     carbon_ok = True
     if carbon_footprint_total is None or carbon_footprint_total <= 0:
         carbon_ok = False
         missing.append("carbon_footprint_total_kg_co2e (Annex XIII(1)(c) / Article 7)")
+
+    # Materials declaration
+    materials_ok = True
+    if not _present_nonempty(hazardous_decl):
+        materials_ok = False
+        missing.append("hazardous_substances_declaration (Annex XIII(1)(b))")
 
     # Recycled content checks + severe violation rule
     recycled_ok = True
@@ -692,22 +1053,56 @@ def validate_record(rec: Dict[str, Any]) -> DppResult:
         _add_metric("recycled_lead_pct", (pb_pct is not None and pb_pct >= RECYCLED_MIN_PCT["Lead"]), pb_pct, RECYCLED_MIN_PCT["Lead"], "Article 8(2)(b)")
 
     _add_metric("rated_capacity_ah", (rated_capacity_ah is not None and rated_capacity_ah > 0), rated_capacity_ah, None, "Annex XIII(1)(a)(g)")
+    _add_metric("unique_identifier", (_present_nonempty(unique_identifier)), unique_identifier, None, "Article 77(3)")
     _add_metric("nominal_voltage_v", (nominal_voltage_v is not None and nominal_voltage_v > 0), nominal_voltage_v, None, "Annex XIII(1)(a)(h)")
+    _add_metric("rated_power_w", (rated_power_w is not None and rated_power_w > 0), rated_power_w, None, "Annex XIII(1)(a)(i)")
+    _add_metric("self_discharge_rate_pct_per_month", (self_discharge is not None and 0 <= self_discharge <= 100), self_discharge, None, "Annex VII Part B(4)")
     _add_metric("charge_discharge_efficiency_percent", (efficiency_pct is not None and 0 < efficiency_pct <= 100), efficiency_pct, None, "Annex XIII(1)(a)(n)")
     _add_metric("expected_lifetime_cycles", (expected_lifetime_cycles is not None and expected_lifetime_cycles > 0), expected_lifetime_cycles, None, "Annex XIII(1)(a)(j)")
     _add_metric("extinguishing_agent", (_present_nonempty(extinguishing_agent)), extinguishing_agent, None, "Annex VI Part A(9) via Annex XIII(1)(1)(a)")
+    _add_metric("thermal_runaway_prevention", (_present_nonempty(thermal_runaway)), thermal_runaway, None, "Annex XIII safety scope")
+    _add_metric("explosion_proof_declaration", (_present_nonempty(explosion_decl)), explosion_decl, None, "Annex XIII safety scope")
+    _add_metric("hazardous_substances_declaration", (_present_nonempty(hazardous_decl)), hazardous_decl, None, "Annex XIII(1)(b)")
+    _add_metric("bms_access_permissions", bms_ok, bms_access, "read+write disclosure", "Article 14")
     _add_metric("carbon_footprint_total_kg_co2e", (carbon_footprint_total is not None and carbon_footprint_total > 0), carbon_footprint_total, None, "Annex XIII(1)(c) / Article 7")
+    _add_metric("manufacturer_id", manufacturer_id_ok, manufacturer_id, "MFG-[A-Z0-9]{6,}", "Heuristic anti-fraud check")
+
+    # Anti-fraud checks
+    coords_ok, coords_note = validate_coordinates(mine_lat, mine_lon)
+    _add_metric("mine_coordinates", coords_ok, f"{mine_lat},{mine_lon}", "major mining countries/zones", "Heuristic sourcing-risk check")
+    if not coords_ok:
+        issues.append(f"Anti-fraud geolocation heuristic: {coords_note}")
+        fraud_flags.append("HIGH_RISK")
+
+    physical_ok, physical_note = validate_physical_carbon_floor(chemistry, carbon_intensity_kg_per_kwh)
+    _add_metric("carbon_physical_plausibility", physical_ok, carbon_intensity_kg_per_kwh, f"{chemistry} floor (kgCO2e/kWh)", "Heuristic physical plausibility check")
+    if not physical_ok:
+        issues.append(f"Anti-fraud physical plausibility heuristic: {physical_note}")
+        # Treat physically impossible declaration as an audit failure.
+        missing.append("carbon_footprint flagged as Data Unrealistic (below chemistry theoretical floor, heuristic)")
+        fraud_flags.append("DATA_UNREALISTIC")
+
+    if not manufacturer_id_ok:
+        issues.append(f"Anti-fraud manufacturer-id heuristic: {manufacturer_id_note}")
+        fraud_flags.append("HIGH_RISK")
 
     # If DPP is NOT mandatory, we only show analysis.
     if not dpp_required:
         issues.extend([f"Analysis (not mandatory): {x}" for x in missing])
+        if not coords_ok:
+            issues.append("High Risk due to sourcing coordinate anomaly.")
+        if not physical_ok:
+            issues.append("Data Unrealistic due to carbon footprint below physical floor.")
+        if not manufacturer_id_ok:
+            issues.append("High Risk due to manufacturer identity inconsistency.")
         return DppResult(
             model=model,
             status="NOT_REQUIRED_DPP",
-            risk_level="N/A",
+            risk_level="high" if (not coords_ok or not physical_ok or not manufacturer_id_ok) else "N/A",
             issues=issues,
             missing_fields=[],
             metrics=metrics,
+            fraud_flags=sorted(set(fraud_flags)),
         )
 
     # Final compliance decision for mandatory cases
@@ -721,9 +1116,21 @@ def validate_record(rec: Dict[str, Any]) -> DppResult:
         issues.extend([f"Carbon footprint non-compliance: {x}" for x in missing if "carbon_footprint_total" in x])
     if not recycled_ok:
         issues.extend([f"Recycled content non-compliance (severe if below targets): {x}" for x in missing if x.startswith("recycled_")])
+    if not materials_ok:
+        issues.extend([f"Materials declaration non-compliance: {x}" for x in missing if "hazardous_substances_declaration" in x])
+    if not bms_ok:
+        issues.extend([f"BMS access non-compliance: {x}" for x in missing if "bms_access_permissions" in x])
+    if not manufacturer_id_ok:
+        issues.extend([f"Manufacturer identity non-compliance: {x}" for x in missing if "manufacturer_id" in x])
+    if not physical_ok:
+        issues.append("Data Unrealistic (carbon footprint physical plausibility failure).")
+    if not coords_ok:
+        issues.append("High Risk (mine coordinates outside known lithium/cobalt zones).")
+    if not manufacturer_id_ok:
+        issues.append("High Risk (manufacturer_id failed validation).")
 
     if missing:
-        risk_level = "high" if severe_recycled_violation or (len(missing) >= 2) else "medium"
+        risk_level = "high" if severe_recycled_violation or (len(missing) >= 2) or (not coords_ok) or (not physical_ok) else "medium"
         return DppResult(
             model=model,
             status="NON_COMPLIANT",
@@ -731,15 +1138,17 @@ def validate_record(rec: Dict[str, Any]) -> DppResult:
             issues=issues + [],
             missing_fields=missing,
             metrics=metrics,
+            fraud_flags=sorted(set(fraud_flags)),
         )
 
     return DppResult(
         model=model,
         status="COMPLIANT",
-        risk_level="low",
+        risk_level="high" if (not coords_ok or not physical_ok or not manufacturer_id_ok) else "low",
         issues=issues,
         missing_fields=[],
         metrics=metrics,
+        fraud_flags=sorted(set(fraud_flags)),
     )
 
 
@@ -796,7 +1205,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.json:
         for r in results:
-            print(json.dumps({"model": r.model, "status": r.status, "missing_fields": r.missing_fields, "reasons": r.reasons}, ensure_ascii=False))
+            print(
+                json.dumps(
+                    {
+                        "model": r.model,
+                        "status": r.status,
+                        "risk_level": r.risk_level,
+                        "missing_fields": r.missing_fields,
+                        "issues": r.issues,
+                        "metrics": r.metrics,
+                        "fraud_flags": r.fraud_flags,
+                    },
+                    ensure_ascii=False,
+                )
+            )
     else:
         for i, r in enumerate(results):
             if i:
