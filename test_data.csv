@@ -1,0 +1,8 @@
+model,category,capacity_kwh,unique_identifier,manufacturer,battery_id,manufacture_place,manufacture_date,recycled_lithium_pct,recycled_cobalt_pct,recycled_nickel_pct,recycled_lead_pct,rated_capacity_ah,nominal_voltage_v,charge_discharge_efficiency_percent,expected_lifetime_cycles,extinguishing_agent,carbon_footprint_total_kg_co2e
+EV-PACK-OK,EV,60,EU-UID-EV-0001,MotionCell Ltd,SN-EV-0001,"PL, Wroclaw",2026-12,12,20,7,90,180,3.6,92,1500,CO2,220.5
+IND-STACK-NI-LOW,INDUSTRIAL,5.2,EU-UID-IND-0002,VoltWorks SA,SN-IND-0002,"FR, Lyon",2026-08,10,18,2,88,210,3.2,90,1200,Sand,110.0
+LMT-CARBON-MISSING,LMT,,EU-UID-LMT-0003,Acme Batteries GmbH,SN-LMT-0003,"DE, Berlin",2026-11,8,17,7,86,150,3.4,88,1000,ABC Powder,
+EV-EXTINGUISHER-MISSING,EV,75,EU-UID-EV-0004,MotionCell Ltd,SN-EV-0004,"PL, Wroclaw",2026-10,15,22,10,92,190,3.7,91,1400,,240.1
+IND-NR-SMALL,INDUSTRIAL,1.8,EU-UID-IND-0005,VoltWorks SA,SN-IND-0005,"FR, Lyon",2026-09,1,1,1,10,120,3.0,85,800,CO2,80.0
+IND-TECH-MISSING,INDUSTRIAL,9.0,EU-UID-IND-0006,VoltWorks SA,SN-IND-0006,"FR, Lyon",2026-07,10,18,7,90,,3.1,88,1300,CO2,130.0
+
