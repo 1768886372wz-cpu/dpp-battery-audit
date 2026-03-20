@@ -43,32 +43,35 @@ _FONT_URLS = [
 
 
 def _ensure_cjk_font() -> Optional[Path]:
-    """Return a Path to a working CJK OTF/TTF file, downloading it if needed.
+    """Return a Path to a working CJK font file, trying each source in order.
 
     Priority order
     --------------
-    1. Already-downloaded / committed ``NotoSansSC-Regular.otf`` beside this file.
-    2. macOS system fonts (Arial Unicode → PingFang → STHeiti).
-    3. Linux system fonts commonly present on Ubuntu/Debian images.
-    4. Remote download from GitHub (Noto Sans SC SubsetOTF, ~4 MB).
-    Returns None only if every attempt fails — callers should fall back to Latin.
+    1. macOS system fonts  — Arial Unicode (22 MB, full Unicode) → PingFang → STHeiti.
+       These are always available on macOS and render all Chinese characters correctly.
+    2. Linux system fonts  — NotoSansCJK / WQY, common on Ubuntu/Debian cloud images.
+    3. Project-local font  — NotoSansSC-Regular.otf if previously downloaded.
+       (SubsetOTF: covers common CJK but may miss rare characters.)
+    4. Remote download     — NotoSansSC-Regular.otf from GitHub as last resort.
+
+    Returns None only if every attempt fails.
     """
-    # 1. Pre-existing project font (works on every platform once committed/cached)
-    if _FONT_PATH.exists() and _FONT_PATH.stat().st_size > 200_000:
-        return _FONT_PATH
+    import platform
 
-    # 2. macOS system fonts
-    _mac_candidates = [
-        Path("/Library/Fonts/Arial Unicode.ttf"),
-        Path("/System/Library/Fonts/PingFang.ttc"),
-        Path("/System/Library/Fonts/STHeiti Light.ttc"),
-        Path("/System/Library/Fonts/STHeiti Medium.ttc"),
-    ]
-    for p in _mac_candidates:
-        if p.exists():
-            return p
+    # 1. macOS system fonts (most reliable on local Mac)
+    if platform.system() == "Darwin":
+        _mac_candidates = [
+            Path("/Library/Fonts/Arial Unicode.ttf"),        # 22 MB, full Unicode
+            Path("/System/Library/Fonts/PingFang.ttc"),
+            Path("/System/Library/Fonts/STHeiti Light.ttc"),
+            Path("/System/Library/Fonts/STHeiti Medium.ttc"),
+        ]
+        for p in _mac_candidates:
+            if p.exists():
+                print(f"[DPP-Engine] Using macOS system font: {p.name}", file=sys.stderr)
+                return p
 
-    # 3. Common Linux system font paths (Ubuntu/Debian Streamlit Cloud image)
+    # 2. Common Linux system font paths (Ubuntu/Debian Streamlit Cloud image)
     _linux_candidates = [
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
@@ -79,7 +82,13 @@ def _ensure_cjk_font() -> Optional[Path]:
     ]
     for p in _linux_candidates:
         if p.exists():
+            print(f"[DPP-Engine] Using Linux system font: {p.name}", file=sys.stderr)
             return p
+
+    # 3. Project-local NotoSansSC (previously downloaded)
+    if _FONT_PATH.exists() and _FONT_PATH.stat().st_size > 200_000:
+        print(f"[DPP-Engine] Using project font: {_FONT_PATH.name}", file=sys.stderr)
+        return _FONT_PATH
 
     # 4. Download from GitHub
     import urllib.request
@@ -97,7 +106,6 @@ def _ensure_cjk_font() -> Optional[Path]:
                     file=sys.stderr,
                 )
                 return _FONT_PATH
-            # Bad download — clean up and try next URL
             if tmp.exists():
                 tmp.unlink()
         except Exception as exc:
