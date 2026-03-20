@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Streamlit internal config redirect
+.streamlit_home/
+
+# Downloaded CJK font (auto-downloaded at runtime; not needed in repo)
+NotoSansSC-Regular.otf
+*.tmp
+
+# Reports
+DPP_Audit_Report*.pdf
+
+# OS
+.DS_Store

@@ -22,6 +22,93 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # - Art. 7 + Annex XIII(1)(c) covers carbon footprint reporting information.
 
 
+# ── CJK font bootstrap ───────────────────────────────────────────────────────
+# NotoSansSC-Regular.otf is stored next to this file (committed to the repo OR
+# downloaded on first run).  The SubsetOTF build is ~4 MB and covers all
+# Simplified-Chinese characters needed for DPP reports.
+
+_FONT_DIR = Path(__file__).resolve().parent
+_FONT_FILENAME = "NotoSansSC-Regular.otf"
+_FONT_PATH = _FONT_DIR / _FONT_FILENAME
+
+# Download candidates — tried in order, first success wins.
+_FONT_URLS = [
+    # googlefonts/noto-cjk — SubsetOTF for Simplified Chinese (~4 MB)
+    "https://github.com/googlefonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+    # notofonts mirror
+    "https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+    # Older tag release (stable)
+    "https://github.com/googlefonts/noto-cjk/raw/be6c059ac1587e556e2412b27f5155c8eb3ddbe6/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+]
+
+
+def _ensure_cjk_font() -> Optional[Path]:
+    """Return a Path to a working CJK OTF/TTF file, downloading it if needed.
+
+    Priority order
+    --------------
+    1. Already-downloaded / committed ``NotoSansSC-Regular.otf`` beside this file.
+    2. macOS system fonts (Arial Unicode → PingFang → STHeiti).
+    3. Linux system fonts commonly present on Ubuntu/Debian images.
+    4. Remote download from GitHub (Noto Sans SC SubsetOTF, ~4 MB).
+    Returns None only if every attempt fails — callers should fall back to Latin.
+    """
+    # 1. Pre-existing project font (works on every platform once committed/cached)
+    if _FONT_PATH.exists() and _FONT_PATH.stat().st_size > 200_000:
+        return _FONT_PATH
+
+    # 2. macOS system fonts
+    _mac_candidates = [
+        Path("/Library/Fonts/Arial Unicode.ttf"),
+        Path("/System/Library/Fonts/PingFang.ttc"),
+        Path("/System/Library/Fonts/STHeiti Light.ttc"),
+        Path("/System/Library/Fonts/STHeiti Medium.ttc"),
+    ]
+    for p in _mac_candidates:
+        if p.exists():
+            return p
+
+    # 3. Common Linux system font paths (Ubuntu/Debian Streamlit Cloud image)
+    _linux_candidates = [
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/noto-cjk/NotoSansCJKsc-Regular.otf"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+    ]
+    for p in _linux_candidates:
+        if p.exists():
+            return p
+
+    # 4. Download from GitHub
+    import urllib.request
+
+    _FONT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _FONT_PATH.with_suffix(".tmp")
+    for url in _FONT_URLS:
+        try:
+            print(f"[DPP-Engine] Downloading CJK font: {url}", file=sys.stderr)
+            urllib.request.urlretrieve(url, str(tmp))
+            if tmp.exists() and tmp.stat().st_size > 200_000:
+                tmp.rename(_FONT_PATH)
+                print(
+                    f"[DPP-Engine] Font saved to {_FONT_PATH} ({_FONT_PATH.stat().st_size // 1024} KB)",
+                    file=sys.stderr,
+                )
+                return _FONT_PATH
+            # Bad download — clean up and try next URL
+            if tmp.exists():
+                tmp.unlink()
+        except Exception as exc:
+            print(f"[DPP-Engine] Font download failed ({url}): {exc}", file=sys.stderr)
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+
+    print("[DPP-Engine] No CJK font available; PDF will use Latin fallback.", file=sys.stderr)
+    return None
+
+
 ALLOWED_CATEGORIES = {"LMT", "INDUSTRIAL", "EV"}
 
 # Recycled content minimum shares requested for pre-audit checks (severe violation if below).
@@ -738,33 +825,30 @@ def generate_audit_pdf(
     else:
         grade = "A"
 
-    # ── Font setup ─────────────────────────────────────────────────────────
+    # ── Font setup (cross-platform: Mac / Linux / Streamlit Cloud) ────────────
     pdf = FPDF(unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.set_margins(left=18, top=15, right=18)
 
-    font_r = "Helvetica"   # regular
-    font_b = "Helvetica"   # bold (same; use style="B")
+    _REGISTERED_FONT_NAME = "NotoSansSC"
+    font_r = "Helvetica"   # will be overwritten if CJK font loads
+    font_b = "Helvetica"
 
-    if _ZH:
-        cjk_candidates = [
-            ("/Library/Fonts/Arial Unicode.ttf",      "ArialUnicode"),
-            ("/System/Library/Fonts/PingFang.ttc",    "PingFang"),
-            ("/System/Library/Fonts/STHeiti Light.ttc","STHeitiL"),
-        ]
-        for fpath, fname in cjk_candidates:
-            if Path(fpath).exists():
-                try:
-                    pdf.add_font(fname, "", fpath)
-                    pdf.add_font(fname, "B", fpath)
-                    font_r = fname
-                    font_b = fname
-                    break
-                except Exception:
-                    continue
-        # If no CJK font found, fall back to English labels to avoid tofu
-        if font_r == "Helvetica":
-            L = L_EN
+    # Attempt to load a CJK font (tries project dir → system dirs → download)
+    _cjk_path = _ensure_cjk_font()
+    if _cjk_path is not None:
+        try:
+            pdf.add_font(_REGISTERED_FONT_NAME, style="",  fname=str(_cjk_path))
+            pdf.add_font(_REGISTERED_FONT_NAME, style="B", fname=str(_cjk_path))
+            font_r = _REGISTERED_FONT_NAME
+            font_b = _REGISTERED_FONT_NAME
+        except Exception as _font_err:
+            print(f"[DPP-Engine] add_font failed ({_cjk_path}): {_font_err}", file=sys.stderr)
+            font_r = font_b = "Helvetica"
+
+    # If we still have no CJK font, Chinese labels will render as boxes → use English
+    if font_r == "Helvetica" and _ZH:
+        L = L_EN
 
     # ── Helper: watermark (call after add_page) ────────────────────────────
     def _watermark() -> None:
