@@ -825,38 +825,68 @@ def generate_audit_pdf(
     else:
         grade = "A"
 
-    # ── Font setup (cross-platform: Mac / Linux / Streamlit Cloud) ────────────
+    # ── Font setup ────────────────────────────────────────────────────────────
+    # Priority:
+    #   1. MSYH.ttc in project root (user-supplied Microsoft YaHei)
+    #   2. NotoSansSC-Regular.otf / system CJK font via _ensure_cjk_font()
+    # If a font file exists but is corrupted/invalid, we skip it silently and try
+    # the next option.  Only raise RuntimeError when every option is exhausted.
     pdf = FPDF(unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.set_margins(left=18, top=15, right=18)
 
-    _REGISTERED_FONT_NAME = "NotoSansSC"
-    font_r = "Helvetica"   # will be overwritten if CJK font loads
-    font_b = "Helvetica"
+    _FONT_NAME = "CJK"   # internal fpdf2 family name
+    font_r = _FONT_NAME
+    font_b = _FONT_NAME
 
-    # Attempt to load a CJK font (tries project dir → system dirs → download)
-    _cjk_path = _ensure_cjk_font()
-    if _cjk_path is not None:
+    def _try_add_font(path: Path) -> bool:
+        """Attempt to register *path* as the CJK font family. Returns True on success."""
         try:
-            pdf.add_font(_REGISTERED_FONT_NAME, style="",  fname=str(_cjk_path))
-            pdf.add_font(_REGISTERED_FONT_NAME, style="B", fname=str(_cjk_path))
-            font_r = _REGISTERED_FONT_NAME
-            font_b = _REGISTERED_FONT_NAME
-        except Exception as _font_err:
-            print(f"[DPP-Engine] add_font failed ({_cjk_path}): {_font_err}", file=sys.stderr)
-            font_r = font_b = "Helvetica"
+            pdf.add_font(_FONT_NAME, style="",  fname=str(path))
+            pdf.add_font(_FONT_NAME, style="B", fname=str(path))
+            return True
+        except Exception as _fe:
+            print(
+                f"[DPP-Engine] Skipping font {path.name} ({type(_fe).__name__}: {_fe})",
+                file=sys.stderr,
+            )
+            return False
 
-    # If we still have no CJK font, Chinese labels will render as boxes → use English
-    if font_r == "Helvetica" and _ZH:
-        L = L_EN
+    _loaded = False
 
-    # ── Helper: watermark (call after add_page) ────────────────────────────
+    # 1. Try MSYH.ttc (user-supplied Microsoft YaHei, preferred)
+    _msyh = _FONT_DIR / "MSYH.ttc"
+    if _msyh.exists() and not _loaded:
+        _loaded = _try_add_font(_msyh)
+
+    # 2. Fallback: NotoSansSC / system fonts / auto-download via _ensure_cjk_font()
+    if not _loaded:
+        _fallback = _ensure_cjk_font()
+        if _fallback is not None:
+            _loaded = _try_add_font(_fallback)
+
+    if not _loaded:
+        raise RuntimeError(
+            "无法加载中文字体 (No valid CJK font found).\n\n"
+            "• 请将有效的 MSYH.ttc（微软雅黑，约 10 MB）放到项目根目录。\n"
+            "• 或确保网络可用，系统将自动下载 NotoSansSC-Regular.otf。\n\n"
+            "Font loading failed for all candidates (MSYH.ttc + NotoSansSC fallback). "
+            "Place a valid MSYH.ttc (~10 MB) in the project root, or allow internet "
+            "access so NotoSansSC-Regular.otf can be auto-downloaded."
+        )
+
+    # Set global default font immediately so every subsequent cell/multi_cell inherits it
+    pdf.set_font(_FONT_NAME, size=10)
+
+    # ── Helper: watermark — ASCII-only text, Helvetica is fine ───────────────
     def _watermark() -> None:
         pdf.set_text_color(210, 210, 210)
         pdf.set_font("Helvetica", "B", 18)
         with pdf.rotation(32, x=105, y=148):
             pdf.text(15, 148, L["watermark"])
         pdf.set_text_color(0, 0, 0)
+        # Restore CJK font as active font after drawing watermark
+        pdf.set_font(font_r, "", 10)
 
     # ── Helper: cell with newline (replaces deprecated ln=1) ──────────────
     def _cell(w: float, h: float, txt: str, **kw) -> None:

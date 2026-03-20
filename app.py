@@ -837,15 +837,26 @@ with tab_audit:
             pdf_filename = f"DPP_Audit_Report_{safe_client}_{safe_proj}.pdf"
 
             progress_bar.progress(95, text=steps[-1])
-            pdf_bytes = generate_audit_pdf(
-                results,
-                lang,
-                report_no,
-                client_name,
-                project_code,
-            )
-            st.session_state["pdf_bytes"] = pdf_bytes
-            st.session_state["pdf_filename"] = pdf_filename
+            try:
+                pdf_bytes = generate_audit_pdf(
+                    results,
+                    lang,
+                    report_no,
+                    client_name,
+                    project_code,
+                )
+                st.session_state["pdf_bytes"] = pdf_bytes
+                st.session_state["pdf_filename"] = pdf_filename
+            except RuntimeError as _font_err:
+                st.session_state["pdf_bytes"] = None
+                progress_bar.empty()
+                st.error(
+                    f"**PDF 生成失败 / PDF generation failed**\n\n"
+                    f"{_font_err}\n\n"
+                    "**解决方法 / Fix:** 请确认项目根目录中存在 `MSYH.ttc` 文件，"
+                    "或在有网络的环境下重新运行以自动下载备用字体。"
+                )
+                st.stop()
 
             progress_bar.progress(100, text=t["done"])
             time.sleep(0.3)
