@@ -43,77 +43,45 @@ _FONT_URLS = [
 
 
 def _ensure_cjk_font() -> Optional[Path]:
-    """Return a Path to a working CJK font file, trying each source in order.
+    """Return the path to NotoSansSC-Regular.otf, downloading it if necessary.
 
-    Priority order
-    --------------
-    1. macOS system fonts  — Arial Unicode (22 MB, full Unicode) → PingFang → STHeiti.
-       These are always available on macOS and render all Chinese characters correctly.
-    2. Linux system fonts  — NotoSansCJK / WQY, common on Ubuntu/Debian cloud images.
-    3. Project-local font  — NotoSansSC-Regular.otf if previously downloaded.
-       (SubsetOTF: covers common CJK but may miss rare characters.)
-    4. Remote download     — NotoSansSC-Regular.otf from GitHub as last resort.
+    This is the ONLY font used for PDF generation — no system fonts, no fallbacks
+    to STHeiti/Arial/PingFang.  Using a single known-good OTF guarantees identical
+    rendering on macOS, Linux, and inside every browser's built-in PDF viewer.
 
-    Returns None only if every attempt fails.
+    Steps
+    -----
+    1. Project directory — NotoSansSC-Regular.otf already present (≥ 1 MB).
+    2. Auto-download     — fetch from GitHub if not found locally.
     """
-    import platform
-
-    # 1. macOS system fonts (most reliable on local Mac)
-    if platform.system() == "Darwin":
-        _mac_candidates = [
-            Path("/Library/Fonts/Arial Unicode.ttf"),        # 22 MB, full Unicode
-            Path("/System/Library/Fonts/PingFang.ttc"),
-            Path("/System/Library/Fonts/STHeiti Light.ttc"),
-            Path("/System/Library/Fonts/STHeiti Medium.ttc"),
-        ]
-        for p in _mac_candidates:
-            if p.exists():
-                print(f"[DPP-Engine] Using macOS system font: {p.name}", file=sys.stderr)
-                return p
-
-    # 2. Common Linux system font paths (Ubuntu/Debian Streamlit Cloud image)
-    _linux_candidates = [
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
-        Path("/usr/share/fonts/noto-cjk/NotoSansCJKsc-Regular.otf"),
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf"),
-        Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
-        Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
-    ]
-    for p in _linux_candidates:
-        if p.exists():
-            print(f"[DPP-Engine] Using Linux system font: {p.name}", file=sys.stderr)
-            return p
-
-    # 3. Project-local NotoSansSC (previously downloaded)
-    if _FONT_PATH.exists() and _FONT_PATH.stat().st_size > 200_000:
-        print(f"[DPP-Engine] Using project font: {_FONT_PATH.name}", file=sys.stderr)
+    # 1. Already present in project directory (committed or previously downloaded)
+    if _FONT_PATH.exists() and _FONT_PATH.stat().st_size > 1_000_000:
+        print(f"[DPP-Engine] Font OK: {_FONT_PATH.name} ({_FONT_PATH.stat().st_size // 1024} KB)",
+              file=sys.stderr)
         return _FONT_PATH
 
-    # 4. Download from GitHub
+    # 2. Download from GitHub
     import urllib.request
 
     _FONT_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = _FONT_PATH.with_suffix(".tmp")
     for url in _FONT_URLS:
         try:
-            print(f"[DPP-Engine] Downloading CJK font: {url}", file=sys.stderr)
+            print(f"[DPP-Engine] Downloading font: {url}", file=sys.stderr)
             urllib.request.urlretrieve(url, str(tmp))
-            if tmp.exists() and tmp.stat().st_size > 200_000:
+            if tmp.exists() and tmp.stat().st_size > 1_000_000:
                 tmp.rename(_FONT_PATH)
-                print(
-                    f"[DPP-Engine] Font saved to {_FONT_PATH} ({_FONT_PATH.stat().st_size // 1024} KB)",
-                    file=sys.stderr,
-                )
+                print(f"[DPP-Engine] Font saved: {_FONT_PATH.name} "
+                      f"({_FONT_PATH.stat().st_size // 1024} KB)", file=sys.stderr)
                 return _FONT_PATH
             if tmp.exists():
                 tmp.unlink()
         except Exception as exc:
-            print(f"[DPP-Engine] Font download failed ({url}): {exc}", file=sys.stderr)
+            print(f"[DPP-Engine] Download failed ({url}): {exc}", file=sys.stderr)
             if tmp.exists():
                 tmp.unlink(missing_ok=True)
 
-    print("[DPP-Engine] No CJK font available; PDF will use Latin fallback.", file=sys.stderr)
+    print("[DPP-Engine] ERROR: NotoSansSC-Regular.otf not available.", file=sys.stderr)
     return None
 
 
@@ -834,67 +802,51 @@ def generate_audit_pdf(
         grade = "A"
 
     # ── Font setup ────────────────────────────────────────────────────────────
-    # Priority:
-    #   1. MSYH.ttc in project root (user-supplied Microsoft YaHei)
-    #   2. NotoSansSC-Regular.otf / system CJK font via _ensure_cjk_font()
-    # If a font file exists but is corrupted/invalid, we skip it silently and try
-    # the next option.  Only raise RuntimeError when every option is exhausted.
+    # Single font: NotoSansSC-Regular.otf (project root, auto-downloaded if absent).
+    # No system fonts (Arial/STHeiti/PingFang) — those cause inconsistent embedding
+    # across platforms and appear garbled in browser PDF viewers.
     pdf = FPDF(unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=14)
     pdf.set_margins(left=18, top=15, right=18)
 
-    _FONT_NAME = "CJK"   # internal fpdf2 family name
-    font_r = _FONT_NAME
-    font_b = _FONT_NAME
+    _FONT_FAMILY = "NotoSans"   # fpdf2 registered family name
+    font_r = _FONT_FAMILY
+    font_b = _FONT_FAMILY
 
-    def _try_add_font(path: Path) -> bool:
-        """Attempt to register *path* as the CJK font family. Returns True on success."""
-        try:
-            pdf.add_font(_FONT_NAME, style="",  fname=str(path))
-            pdf.add_font(_FONT_NAME, style="B", fname=str(path))
-            return True
-        except Exception as _fe:
-            print(
-                f"[DPP-Engine] Skipping font {path.name} ({type(_fe).__name__}: {_fe})",
-                file=sys.stderr,
-            )
-            return False
-
-    _loaded = False
-
-    # 1. Try MSYH.ttc (user-supplied Microsoft YaHei, preferred)
-    _msyh = _FONT_DIR / "MSYH.ttc"
-    if _msyh.exists() and not _loaded:
-        _loaded = _try_add_font(_msyh)
-
-    # 2. Fallback: NotoSansSC / system fonts / auto-download via _ensure_cjk_font()
-    if not _loaded:
-        _fallback = _ensure_cjk_font()
-        if _fallback is not None:
-            _loaded = _try_add_font(_fallback)
-
-    if not _loaded:
+    _font_path = _ensure_cjk_font()   # returns NotoSansSC-Regular.otf or None
+    if _font_path is None:
         raise RuntimeError(
-            "无法加载中文字体 (No valid CJK font found).\n\n"
-            "• 请将有效的 MSYH.ttc（微软雅黑，约 10 MB）放到项目根目录。\n"
-            "• 或确保网络可用，系统将自动下载 NotoSansSC-Regular.otf。\n\n"
-            "Font loading failed for all candidates (MSYH.ttc + NotoSansSC fallback). "
-            "Place a valid MSYH.ttc (~10 MB) in the project root, or allow internet "
-            "access so NotoSansSC-Regular.otf can be auto-downloaded."
+            "无法加载字体 NotoSansSC-Regular.otf。\n\n"
+            "请检查项目目录中是否存在该文件（约 8 MB），\n"
+            "或确保网络畅通以自动下载。\n\n"
+            "Font file NotoSansSC-Regular.otf not found and download failed.\n"
+            "Place the file (~8 MB) in the project root and retry."
         )
 
-    # Set global default font immediately so every subsequent cell/multi_cell inherits it
-    pdf.set_font(_FONT_NAME, size=10)
+    try:
+        # fpdf2 ≥ 2.5 handles Unicode natively — no uni=True needed.
+        # Registering the same OTF file for both regular and bold; fpdf2
+        # applies synthetic bold when style="B" is requested.
+        pdf.add_font(_FONT_FAMILY, style="",  fname=str(_font_path))
+        pdf.add_font(_FONT_FAMILY, style="B", fname=str(_font_path))
+    except Exception as _fe:
+        raise RuntimeError(
+            f"字体加载失败 ({_font_path.name}): {_fe}\n"
+            "Font failed to load — please verify the file is a valid OTF/TTF."
+        ) from _fe
 
-    # ── Helper: watermark — ASCII-only text, Helvetica is fine ───────────────
+    # Set as global default immediately
+    pdf.set_font(_FONT_FAMILY, size=10)
+
+    # ── Helper: watermark ─────────────────────────────────────────────────────
+    # Watermark text is ASCII-only so NotoSans renders it fine.
     def _watermark() -> None:
         pdf.set_text_color(210, 210, 210)
-        pdf.set_font("Helvetica", "B", 18)
+        pdf.set_font(_FONT_FAMILY, "", 18)
         with pdf.rotation(32, x=105, y=148):
             pdf.text(15, 148, L["watermark"])
         pdf.set_text_color(0, 0, 0)
-        # Restore CJK font as active font after drawing watermark
-        pdf.set_font(font_r, "", 10)
+        pdf.set_font(_FONT_FAMILY, "", 10)
 
     # ── Helper: cell with newline (replaces deprecated ln=1) ──────────────
     def _cell(w: float, h: float, txt: str, **kw) -> None:
