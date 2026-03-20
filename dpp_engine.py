@@ -182,7 +182,9 @@ def generate_audit_pdf(
     results: List[DppResult],
     source_csv: Path,
     output_pdf: Path,
+    language: str = "zh",
 ) -> None:
+    """Generate audit PDF.  language='zh' → Chinese-primary labels; 'en' → English-primary labels."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -479,6 +481,37 @@ def generate_audit_pdf(
             actions["Compliance PMO"] = "No critical gaps detected. Maintain periodic data-quality monitoring and evidence retention."
         return [f"{dept}: {action}" for dept, action in actions.items()]
 
+    # Language-dependent labels
+    _zh = language != "en"
+    _L = {
+        "report_title": "欧盟 2023/1542 电池法案合规预审计报告" if _zh else "EU 2023/1542 Battery Regulation – Compliance Pre-Audit Report",
+        "report_sub": "EU 2023/1542 Battery Regulation – Compliance Pre‑Audit Report" if _zh else "中资出海电池 DPP 合规管理门户",
+        "grade_label": "合规等级" if _zh else "Compliance Grade",
+        "audit_time": "审计时间" if _zh else "Audit Time",
+        "data_src": "数据来源" if _zh else "Data Source",
+        "scope_txt": (
+            "适用范围：自 2027‑02‑18 起，LMT 电池、容量大于 2 kWh 的工业电池、以及电动汽车电池须具备电池护照（Art. 77(1)）。"
+            if _zh else
+            "Scope: From 18 Feb 2027, LMT batteries, industrial batteries > 2 kWh and EV batteries shall have a battery passport (Art. 77(1))."
+        ),
+        "summary_title": "型号级别审计结果汇总" if _zh else "Model-Level Audit Summary",
+        "col_model": "型号 / Model",
+        "col_status": "判定 / Status" if _zh else "Status",
+        "col_risk": "合规风险等级 / Risk" if _zh else "Risk Level",
+        "col_reason": "不合规原因与条文引用 / Non-Compliance Reasons & Legal Refs" if _zh else "Non-Compliance Reasons & Legal References",
+        "radar_title": "关键指标雷达表 / Key Metrics Radar" if _zh else "Key Metrics Radar",
+        "risk_dist": "合规风险等级分布 / Risk Level Distribution" if _zh else "Risk Level Distribution",
+        "rec_title": "专业建议" if _zh else "Professional Recommendations (for Manufacturers)",
+        "gap_title": "Gap Fixing List / 差额修复清单" if _zh else "Gap Fixing List",
+        "disclaimer": (
+            "免责声明：本报告为「预审计/一致性检查」用途，基于用户提供的数据字段进行自动化校验，不构成法律意见或公告认证结论。"
+            if _zh else
+            "Disclaimer: This report is for pre-audit/consistency-check purposes only, based on automated validation of user-supplied data. "
+            "It does not constitute legal advice or official certification."
+        ),
+        "manual_review": "Manual Review Recommended (Potential Fraud Risk)" if not _zh else "建议人工复核（潜在欺诈风险）",
+    }
+
     doc = SimpleDocTemplate(
         str(output_pdf),
         pagesize=A4,
@@ -486,39 +519,33 @@ def generate_audit_pdf(
         rightMargin=18 * mm,
         topMargin=16 * mm,
         bottomMargin=16 * mm,
-        title="欧盟 2023/1542 电池法案合规预审计报告",
-        author="DPP Engine",
+        title=_L["report_title"],
+        author="DPP Expert 3.0",
     )
 
     story: List[Any] = []
 
     # Cover
     story.append(Spacer(1, 38 * mm))
-    story.append(Paragraph("欧盟 2023/1542 电池法案合规预审计报告", title_style))
-    story.append(Paragraph("EU 2023/1542 Battery Regulation – Compliance Pre‑Audit Report", subtitle_style))
+    story.append(Paragraph(_L["report_title"], title_style))
+    story.append(Paragraph(_L["report_sub"], subtitle_style))
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph(f"<b>Compliance Grade / 合规等级：{compliance_grade}</b>", h_style))
+    story.append(Paragraph(f"<b>{_L['grade_label']}：{compliance_grade}</b>", h_style))
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(f"审计时间 / Audit Time：{now}", subtitle_style))
-    story.append(Paragraph(f"数据来源 / Data Source：{source_csv.name}", subtitle_style))
+    story.append(Paragraph(f"{_L['audit_time']}：{now}", subtitle_style))
+    story.append(Paragraph(f"{_L['data_src']}：{source_csv.name}", subtitle_style))
     story.append(Spacer(1, 25 * mm))
-    story.append(
-        Paragraph(
-            "适用范围 / Scope：自 2027‑02‑18 起，LMT 电池、容量大于 2 kWh 的工业电池、以及电动汽车电池须具备电池护照（Art. 77(1)）。"
-            " / From 18 Feb 2027, LMT batteries, industrial batteries > 2 kWh and EV batteries shall have a battery passport (Art. 77(1)).",
-            small_grey,
-        )
-    )
+    story.append(Paragraph(_L["scope_txt"], small_grey))
     story.append(PageBreak())
 
     # Summary table
-    story.append(Paragraph("型号级别审计结果汇总 / Model‑Level Audit Summary", h_style))
+    story.append(Paragraph(_L["summary_title"], h_style))
 
     header = [
-        "型号 / Model",
-        "判定 / Status",
-        "合规风险等级 / Risk",
-        "不合规原因与条文引用 / Non‑compliance Reasons & Legal References",
+        _L["col_model"],
+        _L["col_status"],
+        _L["col_risk"],
+        _L["col_reason"],
     ]
     rows: List[List[Any]] = [header]
     flagged_row_indices: List[int] = []
@@ -549,9 +576,9 @@ def generate_audit_pdf(
                     reason_items.append(f"• {x}<br/>  \"{quote}\"<br/>  {threshold}")
                 reasons = "<br/><br/>".join(reason_items)
             else:
-                reasons = "• （未提供原因）"
+                reasons = "• （未提供原因）" if _zh else "• (No reason provided)"
             if is_flagged:
-                reasons += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
+                reasons += f"<br/><b>{_L['manual_review']}</b>"
             cell = Paragraph(reasons, red)
         elif r.status == "NOT_REQUIRED_DPP":
             # Show a short analysis line set.
@@ -560,19 +587,19 @@ def generate_audit_pdf(
                 if r.issues:
                     txt = "• " + str(r.issues[0])
                     if is_flagged:
-                        txt += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
+                        txt += f"<br/><b>{_L['manual_review']}</b>"
                     cell = Paragraph(txt, small_grey)
                 else:
                     cell = Paragraph("—", small_grey)
             else:
                 reasons = "<br/>".join([f"• {x}" for x in analysis[:6]])
                 if is_flagged:
-                    reasons += "<br/><b>Manual Review Recommended (Potential Fraud Risk)</b>"
+                    reasons += f"<br/><b>{_L['manual_review']}</b>"
                 cell = Paragraph(reasons, small_grey)
         else:
             txt = "—"
             if is_flagged:
-                txt = "<b>Manual Review Recommended (Potential Fraud Risk)</b>"
+                txt = f"<b>{_L['manual_review']}</b>"
             cell = Paragraph(txt, small_grey)
 
         rows.append([Paragraph(_norm(r.model), normal), status_cell, risk_cell, cell])
@@ -616,21 +643,14 @@ def generate_audit_pdf(
 
     # Key metrics radar (text summary)
     story.append(Spacer(1, 10 * mm))
-    story.append(
-        Paragraph(
-            "关键指标雷达表（文字版总结） / Key Metrics Radar (Text Summary)",
-            h_style,
-        )
-    )
+    story.append(Paragraph(_L["radar_title"], h_style))
     story.append(Spacer(1, 2 * mm))
-    story.append(Paragraph("风险雷达图 / Risk Radar", h_style))
     story.append(_build_radar_drawing(results))
 
     mandatory = [r for r in results if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
     total = len(mandatory) if mandatory else 1
 
     def _bar(met: int, total_: int) -> str:
-        # ASCII-only bar to avoid font issues.
         n = 20
         filled = int(round((met / total_) * n)) if total_ > 0 else 0
         return "[" + ("X" * filled) + ("." * (n - filled)) + "]"
@@ -643,16 +663,15 @@ def generate_audit_pdf(
     _metric_line("Recycled Cobalt >= 16% (Art. 8(2)(a))", "recycled_cobalt_pct")
     _metric_line("Recycled Nickel >= 6% (Art. 8(2)(d))", "recycled_nickel_pct")
     _metric_line("Recycled Lead >= 85% (Art. 8(2)(b))", "recycled_lead_pct")
-    _metric_line("Rated Capacity present (Annex XIII(1)(a)(g))", "rated_capacity_ah")
-    _metric_line("Nominal Voltage present (Annex XIII(1)(a)(h))", "nominal_voltage_v")
-    _metric_line("Charging/Discharging Efficiency present (Annex XIII(1)(a)(n))", "charge_discharge_efficiency_percent")
-    _metric_line("Expected Lifetime Cycles present (Annex XIII(1)(a)(j))", "expected_lifetime_cycles")
-    _metric_line("Extinguishing Agent present (Annex VI Part A(9) via Annex XIII(1)(a))", "extinguishing_agent")
-    _metric_line("Carbon Footprint Total present (Annex XIII(1)(c) / Art. 7)", "carbon_footprint_total_kg_co2e")
+    _metric_line("Rated Capacity (Annex XIII(1)(a)(g))", "rated_capacity_ah")
+    _metric_line("Nominal Voltage (Annex XIII(1)(a)(h))", "nominal_voltage_v")
+    _metric_line("Charge/Discharge Efficiency (Annex XIII(1)(a)(n))", "charge_discharge_efficiency_percent")
+    _metric_line("Expected Lifetime Cycles (Annex XIII(1)(a)(j))", "expected_lifetime_cycles")
+    _metric_line("Extinguishing Agent (Annex VI Part A(9) / Annex XIII(1)(a))", "extinguishing_agent")
+    _metric_line("Carbon Footprint Total (Annex XIII(1)(c) / Art. 7)", "carbon_footprint_total_kg_co2e")
 
-    # Overall risk distribution
     story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("合规风险等级分布 / Risk Level Distribution", h_style))
+    story.append(Paragraph(_L["risk_dist"], h_style))
     risk_counts = {"low": 0, "medium": 0, "high": 0}
     for r in mandatory:
         rl = (r.risk_level or "").lower()
@@ -660,48 +679,48 @@ def generate_audit_pdf(
             risk_counts[rl] += 1
     story.append(
         Paragraph(
-            f"Low / 低: {risk_counts['low']} ； Medium / 中: {risk_counts['medium']} ； High / 高: {risk_counts['high']}",
+            f"Low: {risk_counts['low']}  |  Medium: {risk_counts['medium']}  |  High: {risk_counts['high']}",
             normal,
         )
     )
 
-    # Professional recommendations
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph("专业建议 / Professional Recommendations (for Manufacturers)", h_style))
-    story.append(
-        Paragraph(
-            "如出现 NON_COMPLIANT，请优先对照电池护照强制信息清单补齐关键字段，并对回收材料比例/碳足迹建立可验证的计算与证明文件。"
-            " / If NON_COMPLIANT is reported, prioritise completing mandatory Battery Passport data and producing verifiable evidence for recycled content and carbon footprint.",
-            normal,
+    story.append(Paragraph(_L["rec_title"], h_style))
+    if _zh:
+        rec_intro = (
+            "如出现 NON_COMPLIANT，请优先对照电池护照强制信息清单补齐关键字段，"
+            "并对回收材料比例/碳足迹建立可验证的计算与证明文件。"
         )
-    )
-    advice_items = [
-        "回收材料比例：建立回收含量计算/验证流程，确保 Li/Co/Ni/Pb 满足最小目标；并对计算方法与证据链做审计留痕（Article 8(2)(a)-(d)）。"
-        " / Recycled content: implement a calculation/verification process so Li/Co/Ni/Pb meet minimum targets, and maintain auditable evidence (Article 8(2)(a)-(d)).",
-        "碳足迹计算：补齐生命周期碳排放总量字段，完成 PCF 核算边界与数据质量管理，形成可验证输出（Annex XIII(1)(c) / Article 7）。"
-        " / Carbon footprint: provide lifecycle carbon footprint total and generate verifiable PCF outputs (Annex XIII(1)(c) / Article 7).",
-        "技术与安全字段：完善额定容量/标称电压/效率/预期寿命以及灭火剂类型，确保与产品技术文件和标签一致（Annex XIII(1)(a)；Annex VI Part A(9) via Annex XIII(1)(a)）。"
-        " / Technical & safety: complete rated capacity/nominal voltage/efficiency/lifetime cycles and extinguisher agent; align with technical documentation and labeling (Annex XIII(1)(a)).",
-        "标签与可追溯标识：补齐制造商、生产地、生产日期以及 QR 链接的唯一标识，确保护照记录与实物标识一致（Annex VI Part A via Annex XIII(1)(a); Art. 77(3)）。"
-        " / Label & traceability: complete manufacturer, manufacturing place/date, and the QR-linked unique identifier so passport data matches physical labeling (Art. 77(3)).",
-        "建议建立内部数据治理：定义字段责任人、系统 of record、更新频率与审计留痕，确保“准确、完整、及时更新”（Art. 77(4)）。"
-        " / Data governance: define ownership, system of record, refresh cadence and audit trail to keep information accurate, complete and up to date (Art. 77(4)).",
-    ]
+        advice_items = [
+            "回收材料比例：建立回收含量计算/验证流程，确保 Li/Co/Ni/Pb 满足最小目标；对计算方法与证据链做审计留痕（Article 8(2)(a)-(d)）。",
+            "碳足迹计算：补齐生命周期碳排放总量字段，完成 PCF 核算边界与数据质量管理，形成可验证输出（Annex XIII(1)(c) / Article 7）。",
+            "技术与安全字段：完善额定容量/标称电压/效率/预期寿命以及灭火剂类型（Annex XIII(1)(a)；Annex VI Part A(9)）。",
+            "标签与可追溯标识：补齐制造商、生产地、生产日期及 QR 链接的唯一标识（Art. 77(3)）。",
+            "建立内部数据治理：定义字段责任人、更新频率与审计留痕，确保准确、完整、及时更新（Art. 77(4)）。",
+        ]
+    else:
+        rec_intro = (
+            "If NON_COMPLIANT is reported, prioritise completing mandatory Battery Passport data and "
+            "producing verifiable evidence for recycled content and carbon footprint."
+        )
+        advice_items = [
+            "Recycled content: implement a calculation/verification process so Li/Co/Ni/Pb meet minimum targets; maintain auditable evidence (Article 8(2)(a)-(d)).",
+            "Carbon footprint: provide lifecycle carbon footprint total and generate verifiable PCF outputs (Annex XIII(1)(c) / Article 7).",
+            "Technical & safety: complete rated capacity/voltage/efficiency/lifetime and extinguishing-agent fields; align with labeling and technical dossier (Annex XIII(1)(a)).",
+            "Label & traceability: complete manufacturer, manufacturing place/date, and QR-linked unique identifier (Art. 77(3)).",
+            "Data governance: define ownership, system of record, refresh cadence and audit trail to keep data accurate, complete and up to date (Art. 77(4)).",
+        ]
+    story.append(Paragraph(rec_intro, normal))
     for item in advice_items:
         story.append(Paragraph("• " + item, normal))
 
     story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("Gap Fixing List / 差额修复清单", h_style))
+    story.append(Paragraph(_L["gap_title"], h_style))
     for line in _build_gap_fixing_list(results):
         story.append(Paragraph("• " + line, normal))
 
     story.append(Spacer(1, 6 * mm))
-    story.append(
-        Paragraph(
-            "免责声明：本报告为“预审计/一致性检查”用途，基于你提供的数据字段进行自动化校验，不构成法律意见或公告认证结论。",
-            small_grey,
-        )
-    )
+    story.append(Paragraph(_L["disclaimer"], small_grey))
 
     def _footer(canvas, doc_obj):
         canvas.saveState()
