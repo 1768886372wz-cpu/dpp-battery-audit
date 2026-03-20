@@ -845,6 +845,9 @@ with tab_audit:
                     source_csv=Path(uploaded_file.name),
                     output_pdf=out_path,
                     language=lang,
+                    report_no=report_no,
+                    client_name=client_name,
+                    project_code=project_code,
                 )
                 st.session_state["pdf_bytes"] = out_path.read_bytes()
                 st.session_state["pdf_filename"] = pdf_filename

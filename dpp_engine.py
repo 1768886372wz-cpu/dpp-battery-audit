@@ -177,578 +177,6 @@ def _install_hint() -> str:
     )
 
 
-def generate_audit_pdf(
-    *,
-    results: List[DppResult],
-    source_csv: Path,
-    output_pdf: Path,
-    language: str = "zh",
-) -> None:
-    """Generate audit PDF.  language='zh' → Chinese-primary labels; 'en' → English-primary labels."""
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.graphics.shapes import Drawing, Line, Polygon, String
-        from reportlab.graphics import renderPDF
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    except ModuleNotFoundError as e:
-        raise ModuleNotFoundError(str(e) + "\n\n" + _install_hint()) from e
-
-    def _register_cjk_font() -> str:
-        """
-        Fix tofu/black-squares for Chinese text.
-        Prefer macOS built-in fonts; if unavailable, fall back to built-in CID font.
-        """
-        candidates = [
-            # Common macOS CJK fonts (paths may differ by OS version).
-            ("PingFang", "/System/Library/Fonts/PingFang.ttc"),
-            ("STHeiti", "/System/Library/Fonts/STHeiti Light.ttc"),
-            ("STHeiti", "/System/Library/Fonts/STHeiti Medium.ttc"),
-            ("Heiti", "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"),  # occasionally present; harmless if missing
-            ("ArialUnicode", "/Library/Fonts/Arial Unicode.ttf"),
-        ]
-        for font_name, font_path in candidates:
-            try:
-                if Path(font_path).exists():
-                    # TTFont can load many .ttf and some .ttc; if it fails, we catch and try next.
-                    pdfmetrics.registerFont(TTFont(font_name, font_path))
-                    return font_name
-            except Exception:
-                continue
-
-        # Built-in CID font (no external download). Good enough for Simplified Chinese.
-        cid_name = "STSong-Light"
-        try:
-            pdfmetrics.registerFont(UnicodeCIDFont(cid_name))
-        except Exception:
-            pass
-        return cid_name
-
-    cjk_font = _register_cjk_font()
-
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "CoverTitle",
-        parent=styles["Title"],
-        fontName=cjk_font,
-        fontSize=22,
-        leading=28,
-        alignment=1,  # center
-        spaceAfter=16,
-    )
-    subtitle_style = ParagraphStyle(
-        "CoverSubtitle",
-        parent=styles["Normal"],
-        fontName=cjk_font,
-        fontSize=12,
-        leading=16,
-        alignment=1,
-        textColor=colors.HexColor("#333333"),
-    )
-    h_style = ParagraphStyle(
-        "H",
-        parent=styles["Heading2"],
-        fontName=cjk_font,
-        fontSize=14,
-        leading=18,
-        spaceBefore=10,
-        spaceAfter=8,
-    )
-    normal = ParagraphStyle(
-        "Body",
-        parent=styles["Normal"],
-        fontName=cjk_font,
-        fontSize=10.5,
-        leading=14,
-        textColor=colors.HexColor("#111111"),
-    )
-    small_grey = ParagraphStyle(
-        "SmallGrey",
-        parent=styles["Normal"],
-        fontName=cjk_font,
-        fontSize=9.5,
-        leading=13,
-        textColor=colors.HexColor("#555555"),
-    )
-    red = ParagraphStyle(
-        "Red",
-        parent=normal,
-        textColor=colors.HexColor("#B00020"),
-    )
-    status_green = ParagraphStyle(
-        "StatusGreen",
-        parent=normal,
-        textColor=colors.HexColor("#1B5E20"),
-        fontName=cjk_font,
-    )
-    status_red = ParagraphStyle(
-        "StatusRed",
-        parent=normal,
-        textColor=colors.HexColor("#B00020"),
-        fontName=cjk_font,
-    )
-    status_grey = ParagraphStyle(
-        "StatusGrey",
-        parent=normal,
-        textColor=colors.HexColor("#444444"),
-        fontName=cjk_font,
-    )
-
-    risk_low = ParagraphStyle(
-        "RiskLow",
-        parent=normal,
-        textColor=colors.HexColor("#1B5E20"),
-        fontName=cjk_font,
-    )
-    risk_med = ParagraphStyle(
-        "RiskMed",
-        parent=normal,
-        textColor=colors.HexColor("#B26A00"),
-        fontName=cjk_font,
-    )
-    risk_high = ParagraphStyle(
-        "RiskHigh",
-        parent=normal,
-        textColor=colors.HexColor("#B00020"),
-        fontName=cjk_font,
-    )
-    risk_na = ParagraphStyle(
-        "RiskNA",
-        parent=normal,
-        textColor=colors.HexColor("#666666"),
-        fontName=cjk_font,
-    )
-    quote_style = ParagraphStyle(
-        "Quote",
-        parent=small_grey,
-        fontName=cjk_font,
-        fontSize=9.2,
-        leading=12.5,
-        textColor=colors.HexColor("#3F3F46"),
-    )
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    def _grade_label() -> str:
-        total = len(results) or 1
-        non = sum(1 for r in results if r.status == "NON_COMPLIANT")
-        flagged = sum(1 for r in results if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])))
-        non_ratio = non / total
-        if non_ratio <= 0.10 and flagged == 0:
-            return "A / 合规"
-        if non_ratio <= 0.35 and flagged <= max(1, total // 4):
-            return "B / 警告"
-        return "C / 拒绝"
-
-    compliance_grade = _grade_label()
-
-    legal_quotes = {
-        "recycled_lithium_pct": (
-            "Article 8(2)(c): \"... shall demonstrate that those batteries contain ... (c) 6 % lithium.\"",
-            "Threshold: **>= 6% lithium**",
-        ),
-        "recycled_cobalt_pct": (
-            "Article 8(2)(a): \"... shall demonstrate that those batteries contain ... (a) 16 % cobalt.\"",
-            "Threshold: **>= 16% cobalt**",
-        ),
-        "recycled_nickel_pct": (
-            "Article 8(2)(d): \"... shall demonstrate that those batteries contain ... (d) 6 % nickel.\"",
-            "Threshold: **>= 6% nickel**",
-        ),
-        "recycled_lead_pct": (
-            "Article 8(2)(b): \"... shall demonstrate that those batteries contain ... (b) 85 % lead.\"",
-            "Threshold: **>= 85% lead**",
-        ),
-        "carbon_footprint": (
-            "Annex XIII(1)(c): \"A battery passport shall include ... the carbon footprint information referred to in Article 7(1) and (2).\"",
-            "Threshold: **must be present and physically plausible**",
-        ),
-        "bms_access_permissions": (
-            "Article 14: information on the state of health shall be made available for relevant battery categories.",
-            "Threshold: **read/write access disclosure required by this audit rule**",
-        ),
-        "manufacturer_id": (
-            "Article 77(4): \"... ensure that the information in the battery passport is accurate, complete and up to date.\"",
-            "Threshold: **traceability identity must pass format checks**",
-        ),
-        "extinguishing_agent": (
-            "Annex VI Part A(9): label information includes \"usable extinguishing agent\" (via Annex XIII(1)(a)).",
-            "Threshold: **field must be present**",
-        ),
-        "hazardous_substances_declaration": (
-            "Annex XIII(1)(b): battery passport includes material composition and hazardous substances information.",
-            "Threshold: **declaration must be present**",
-        ),
-    }
-
-    def _issue_quote(issue: str) -> Tuple[str, str]:
-        key_map = [
-            ("recycled_lithium_pct", "recycled_lithium_pct"),
-            ("recycled_cobalt_pct", "recycled_cobalt_pct"),
-            ("recycled_nickel_pct", "recycled_nickel_pct"),
-            ("recycled_lead_pct", "recycled_lead_pct"),
-            ("carbon_footprint", "carbon_footprint"),
-            ("bms_access_permissions", "bms_access_permissions"),
-            ("manufacturer_id", "manufacturer_id"),
-            ("extinguishing_agent", "extinguishing_agent"),
-            ("hazardous_substances_declaration", "hazardous_substances_declaration"),
-        ]
-        for token, key in key_map:
-            if token in issue:
-                return legal_quotes[key]
-        return (
-            "Article 77(4): \"... information in the battery passport is accurate, complete and up to date.\"",
-            "Threshold: **complete and verifiable data required**",
-        )
-
-    def _build_radar_drawing(results_for_radar: List[DppResult]) -> Drawing:
-        mandatory = [r for r in results_for_radar if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
-        total = len(mandatory) or 1
-
-        def _score(metric_keys: List[str]) -> float:
-            met = 0
-            for r in mandatory:
-                ok = True
-                for k in metric_keys:
-                    ok = ok and (((r.metrics or {}).get(k, {}) or {}).get("met") is True)
-                if ok:
-                    met += 1
-            return met / total
-
-        dimensions = [
-            ("Safety", _score(["extinguishing_agent", "thermal_runaway_prevention", "explosion_proof_declaration"])),
-            ("Environmental", _score(["carbon_footprint_total_kg_co2e", "carbon_physical_plausibility"])),
-            ("Traceability", _score(["unique_identifier", "manufacturer_id", "mine_coordinates"])),
-            ("Recycled", _score(["recycled_lithium_pct", "recycled_cobalt_pct", "recycled_nickel_pct", "recycled_lead_pct"])),
-            ("Performance", _score(["rated_capacity_ah", "nominal_voltage_v", "rated_power_w", "expected_lifetime_cycles"])),
-            ("BMS Access", _score(["bms_access_permissions"])),
-        ]
-
-        cx, cy, rmax = 160, 120, 70
-        n = len(dimensions)
-        drawing = Drawing(320, 240)
-
-        # grid rings
-        for scale in [0.25, 0.5, 0.75, 1.0]:
-            pts = []
-            for i in range(n):
-                angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
-                rr = rmax * scale
-                pts.extend([cx + rr * __import__("math").cos(angle), cy + rr * __import__("math").sin(angle)])
-            drawing.add(Polygon(points=pts, fillColor=None, strokeColor=colors.HexColor("#D1D5DB"), strokeWidth=0.6))
-
-        # axis lines + labels
-        for i, (name, _) in enumerate(dimensions):
-            angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
-            x = cx + rmax * __import__("math").cos(angle)
-            y = cy + rmax * __import__("math").sin(angle)
-            drawing.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#9CA3AF"), strokeWidth=0.6))
-            lx = cx + (rmax + 14) * __import__("math").cos(angle)
-            ly = cy + (rmax + 14) * __import__("math").sin(angle)
-            drawing.add(String(lx - 18, ly - 3, name, fontName="Helvetica", fontSize=7.5, fillColor=colors.HexColor("#374151")))
-
-        # data polygon
-        data_pts = []
-        for i, (_, score) in enumerate(dimensions):
-            angle = (2 * 3.1415926 * i / n) - (3.1415926 / 2)
-            rr = rmax * max(0.0, min(1.0, score))
-            data_pts.extend([cx + rr * __import__("math").cos(angle), cy + rr * __import__("math").sin(angle)])
-        drawing.add(Polygon(points=data_pts, strokeColor=colors.HexColor("#4F46E5"), fillColor=colors.HexColor("#A5B4FC"), fillOpacity=0.35, strokeWidth=1.2))
-        return drawing
-
-    def _build_gap_fixing_list(results_for_gaps: List[DppResult]) -> List[str]:
-        issue_pool = [m for r in results_for_gaps for m in (r.missing_fields or [])]
-        dept_map = [
-            ("recycled_", "Procurement & Sustainability Team", "Collect supplier recycled-material certificates and update recycled-content declarations."),
-            ("carbon_footprint", "LCA/ESG Team", "Recalculate product carbon footprint and provide audited methodology evidence."),
-            ("bms_access_permissions", "BMS Firmware & Diagnostics Team", "Publish read/write access policy and technical interface control note."),
-            ("extinguishing_agent", "EHS & Product Safety Team", "Provide extinguishing-agent specification and hazard response instructions."),
-            ("manufacturer_id", "Master Data Governance Team", "Fix manufacturer identity schema and traceability key integrity."),
-            ("hazardous_substances_declaration", "Compliance Documentation Team", "Complete hazardous-substance declaration linked to BOM/SDS records."),
-            ("rated_capacity_ah", "R&D Validation Team", "Provide validated electrochemical performance measurements in technical dossier."),
-        ]
-        actions: Dict[str, str] = {}
-        for issue in issue_pool:
-            for token, dept, action in dept_map:
-                if token in issue and dept not in actions:
-                    actions[dept] = action
-        if not actions:
-            actions["Compliance PMO"] = "No critical gaps detected. Maintain periodic data-quality monitoring and evidence retention."
-        return [f"{dept}: {action}" for dept, action in actions.items()]
-
-    # Language-dependent labels
-    _zh = language != "en"
-    _L = {
-        "report_title": "欧盟 2023/1542 电池法案合规预审计报告" if _zh else "EU 2023/1542 Battery Regulation – Compliance Pre-Audit Report",
-        "report_sub": "EU 2023/1542 Battery Regulation – Compliance Pre‑Audit Report" if _zh else "中资出海电池 DPP 合规管理门户",
-        "grade_label": "合规等级" if _zh else "Compliance Grade",
-        "audit_time": "审计时间" if _zh else "Audit Time",
-        "data_src": "数据来源" if _zh else "Data Source",
-        "scope_txt": (
-            "适用范围：自 2027‑02‑18 起，LMT 电池、容量大于 2 kWh 的工业电池、以及电动汽车电池须具备电池护照（Art. 77(1)）。"
-            if _zh else
-            "Scope: From 18 Feb 2027, LMT batteries, industrial batteries > 2 kWh and EV batteries shall have a battery passport (Art. 77(1))."
-        ),
-        "summary_title": "型号级别审计结果汇总" if _zh else "Model-Level Audit Summary",
-        "col_model": "型号 / Model",
-        "col_status": "判定 / Status" if _zh else "Status",
-        "col_risk": "合规风险等级 / Risk" if _zh else "Risk Level",
-        "col_reason": "不合规原因与条文引用 / Non-Compliance Reasons & Legal Refs" if _zh else "Non-Compliance Reasons & Legal References",
-        "radar_title": "关键指标雷达表 / Key Metrics Radar" if _zh else "Key Metrics Radar",
-        "risk_dist": "合规风险等级分布 / Risk Level Distribution" if _zh else "Risk Level Distribution",
-        "rec_title": "专业建议" if _zh else "Professional Recommendations (for Manufacturers)",
-        "gap_title": "Gap Fixing List / 差额修复清单" if _zh else "Gap Fixing List",
-        "disclaimer": (
-            "免责声明：本报告为「预审计/一致性检查」用途，基于用户提供的数据字段进行自动化校验，不构成法律意见或公告认证结论。"
-            if _zh else
-            "Disclaimer: This report is for pre-audit/consistency-check purposes only, based on automated validation of user-supplied data. "
-            "It does not constitute legal advice or official certification."
-        ),
-        "manual_review": "Manual Review Recommended (Potential Fraud Risk)" if not _zh else "建议人工复核（潜在欺诈风险）",
-    }
-
-    doc = SimpleDocTemplate(
-        str(output_pdf),
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-        title=_L["report_title"],
-        author="DPP Expert 3.0",
-    )
-
-    story: List[Any] = []
-
-    # Cover
-    story.append(Spacer(1, 38 * mm))
-    story.append(Paragraph(_L["report_title"], title_style))
-    story.append(Paragraph(_L["report_sub"], subtitle_style))
-    story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph(f"<b>{_L['grade_label']}：{compliance_grade}</b>", h_style))
-    story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(f"{_L['audit_time']}：{now}", subtitle_style))
-    story.append(Paragraph(f"{_L['data_src']}：{source_csv.name}", subtitle_style))
-    story.append(Spacer(1, 25 * mm))
-    story.append(Paragraph(_L["scope_txt"], small_grey))
-    story.append(PageBreak())
-
-    # Summary table
-    story.append(Paragraph(_L["summary_title"], h_style))
-
-    header = [
-        _L["col_model"],
-        _L["col_status"],
-        _L["col_risk"],
-        _L["col_reason"],
-    ]
-    rows: List[List[Any]] = [header]
-    flagged_row_indices: List[int] = []
-    for r in results:
-        if r.status == "COMPLIANT":
-            status_cell = Paragraph("<b>COMPLIANT / 合规</b>", status_green)
-        elif r.status == "NON_COMPLIANT":
-            status_cell = Paragraph("<b>NON_COMPLIANT / 不合规</b>", status_red)
-        else:
-            status_cell = Paragraph("<b>NOT_REQUIRED_DPP / 不强制执行 DPP</b>", status_grey)
-
-        if r.risk_level == "low":
-            risk_cell = Paragraph("<b>低 / Low</b>", risk_low)
-        elif r.risk_level == "medium":
-            risk_cell = Paragraph("<b>中 / Medium</b>", risk_med)
-        elif r.risk_level == "high":
-            risk_cell = Paragraph("<b>高 / High</b>", risk_high)
-        else:
-            risk_cell = Paragraph("<b>N/A</b>", risk_na)
-
-        is_flagged = any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or []))
-
-        if r.status == "NON_COMPLIANT":
-            if r.missing_fields:
-                reason_items = []
-                for x in r.missing_fields:
-                    quote, threshold = _issue_quote(x)
-                    reason_items.append(f"• {x}<br/>  \"{quote}\"<br/>  {threshold}")
-                reasons = "<br/><br/>".join(reason_items)
-            else:
-                reasons = "• （未提供原因）" if _zh else "• (No reason provided)"
-            if is_flagged:
-                reasons += f"<br/><b>{_L['manual_review']}</b>"
-            cell = Paragraph(reasons, red)
-        elif r.status == "NOT_REQUIRED_DPP":
-            # Show a short analysis line set.
-            analysis = [x for x in (r.issues or []) if str(x).startswith("Analysis (not mandatory):")]
-            if not analysis:
-                if r.issues:
-                    txt = "• " + str(r.issues[0])
-                    if is_flagged:
-                        txt += f"<br/><b>{_L['manual_review']}</b>"
-                    cell = Paragraph(txt, small_grey)
-                else:
-                    cell = Paragraph("—", small_grey)
-            else:
-                reasons = "<br/>".join([f"• {x}" for x in analysis[:6]])
-                if is_flagged:
-                    reasons += f"<br/><b>{_L['manual_review']}</b>"
-                cell = Paragraph(reasons, small_grey)
-        else:
-            txt = "—"
-            if is_flagged:
-                txt = f"<b>{_L['manual_review']}</b>"
-            cell = Paragraph(txt, small_grey)
-
-        rows.append([Paragraph(_norm(r.model), normal), status_cell, risk_cell, cell])
-        if is_flagged:
-            flagged_row_indices.append(len(rows) - 1)
-
-    table = Table(
-        rows,
-        colWidths=[52 * mm, 32 * mm, 32 * mm, 96 * mm],
-        repeatRows=1,
-        hAlign="LEFT",
-    )
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B3D91")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), cjk_font),
-                ("FONTSIZE", (0, 0), (-1, 0), 10.5),
-                ("ALIGN", (1, 1), (1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D0D7DE")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#F3F4F6"), colors.HexColor("#FFFFFF")]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
-    )
-    if flagged_row_indices:
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BOX", (0, row), (-1, row), 1.2, colors.HexColor("#7E57C2"))
-                    for row in flagged_row_indices
-                ]
-            )
-        )
-    story.append(table)
-
-    # Key metrics radar (text summary)
-    story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(_L["radar_title"], h_style))
-    story.append(Spacer(1, 2 * mm))
-    story.append(_build_radar_drawing(results))
-
-    mandatory = [r for r in results if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
-    total = len(mandatory) if mandatory else 1
-
-    def _bar(met: int, total_: int) -> str:
-        n = 20
-        filled = int(round((met / total_) * n)) if total_ > 0 else 0
-        return "[" + ("X" * filled) + ("." * (n - filled)) + "]"
-
-    def _metric_line(label: str, metric_key: str) -> None:
-        met = sum(1 for r in mandatory if (r.metrics or {}).get(metric_key, {}).get("met") is True)
-        story.append(Paragraph(f"{label}: {met}/{total} met {_bar(met, total)}", normal))
-
-    _metric_line("Recycled Lithium >= 6% (Art. 8(2)(c))", "recycled_lithium_pct")
-    _metric_line("Recycled Cobalt >= 16% (Art. 8(2)(a))", "recycled_cobalt_pct")
-    _metric_line("Recycled Nickel >= 6% (Art. 8(2)(d))", "recycled_nickel_pct")
-    _metric_line("Recycled Lead >= 85% (Art. 8(2)(b))", "recycled_lead_pct")
-    _metric_line("Rated Capacity (Annex XIII(1)(a)(g))", "rated_capacity_ah")
-    _metric_line("Nominal Voltage (Annex XIII(1)(a)(h))", "nominal_voltage_v")
-    _metric_line("Charge/Discharge Efficiency (Annex XIII(1)(a)(n))", "charge_discharge_efficiency_percent")
-    _metric_line("Expected Lifetime Cycles (Annex XIII(1)(a)(j))", "expected_lifetime_cycles")
-    _metric_line("Extinguishing Agent (Annex VI Part A(9) / Annex XIII(1)(a))", "extinguishing_agent")
-    _metric_line("Carbon Footprint Total (Annex XIII(1)(c) / Art. 7)", "carbon_footprint_total_kg_co2e")
-
-    story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph(_L["risk_dist"], h_style))
-    risk_counts = {"low": 0, "medium": 0, "high": 0}
-    for r in mandatory:
-        rl = (r.risk_level or "").lower()
-        if rl in risk_counts:
-            risk_counts[rl] += 1
-    story.append(
-        Paragraph(
-            f"Low: {risk_counts['low']}  |  Medium: {risk_counts['medium']}  |  High: {risk_counts['high']}",
-            normal,
-        )
-    )
-
-    story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(_L["rec_title"], h_style))
-    if _zh:
-        rec_intro = (
-            "如出现 NON_COMPLIANT，请优先对照电池护照强制信息清单补齐关键字段，"
-            "并对回收材料比例/碳足迹建立可验证的计算与证明文件。"
-        )
-        advice_items = [
-            "回收材料比例：建立回收含量计算/验证流程，确保 Li/Co/Ni/Pb 满足最小目标；对计算方法与证据链做审计留痕（Article 8(2)(a)-(d)）。",
-            "碳足迹计算：补齐生命周期碳排放总量字段，完成 PCF 核算边界与数据质量管理，形成可验证输出（Annex XIII(1)(c) / Article 7）。",
-            "技术与安全字段：完善额定容量/标称电压/效率/预期寿命以及灭火剂类型（Annex XIII(1)(a)；Annex VI Part A(9)）。",
-            "标签与可追溯标识：补齐制造商、生产地、生产日期及 QR 链接的唯一标识（Art. 77(3)）。",
-            "建立内部数据治理：定义字段责任人、更新频率与审计留痕，确保准确、完整、及时更新（Art. 77(4)）。",
-        ]
-    else:
-        rec_intro = (
-            "If NON_COMPLIANT is reported, prioritise completing mandatory Battery Passport data and "
-            "producing verifiable evidence for recycled content and carbon footprint."
-        )
-        advice_items = [
-            "Recycled content: implement a calculation/verification process so Li/Co/Ni/Pb meet minimum targets; maintain auditable evidence (Article 8(2)(a)-(d)).",
-            "Carbon footprint: provide lifecycle carbon footprint total and generate verifiable PCF outputs (Annex XIII(1)(c) / Article 7).",
-            "Technical & safety: complete rated capacity/voltage/efficiency/lifetime and extinguishing-agent fields; align with labeling and technical dossier (Annex XIII(1)(a)).",
-            "Label & traceability: complete manufacturer, manufacturing place/date, and QR-linked unique identifier (Art. 77(3)).",
-            "Data governance: define ownership, system of record, refresh cadence and audit trail to keep data accurate, complete and up to date (Art. 77(4)).",
-        ]
-    story.append(Paragraph(rec_intro, normal))
-    for item in advice_items:
-        story.append(Paragraph("• " + item, normal))
-
-    story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph(_L["gap_title"], h_style))
-    for line in _build_gap_fixing_list(results):
-        story.append(Paragraph("• " + line, normal))
-
-    story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph(_L["disclaimer"], small_grey))
-
-    def _footer(canvas, doc_obj):
-        canvas.saveState()
-        # Watermark background
-        canvas.setFillColor(colors.Color(0.65, 0.65, 0.65, alpha=0.15))
-        canvas.setFont("Helvetica-Bold", 24)
-        canvas.translate(105 * mm, 150 * mm)
-        canvas.rotate(35)
-        canvas.drawCentredString(0, 0, "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT")
-        canvas.rotate(-35)
-        canvas.translate(-105 * mm, -150 * mm)
-
-        canvas.setFont(cjk_font, 9)
-        canvas.setFillColor(colors.HexColor("#666666"))
-        canvas.drawString(18 * mm, 10 * mm, f"DPP Audit Report • {source_csv.name}")
-        canvas.drawRightString(210 * mm - 18 * mm, 10 * mm, f"Page {doc_obj.page}")
-        canvas.setFont(cjk_font, 8.5)
-        canvas.setFillColor(colors.HexColor("#777777"))
-        canvas.drawCentredString(
-            105 * mm,
-            6.2 * mm,
-            "Generated by AI Compliance Engine - Verified for EU 2023/1542 Standards",
-        )
-        canvas.restoreState()
-
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
-
-
 def dpp_applicability(category: str, capacity_kwh: Optional[float]) -> Tuple[bool, str]:
     """
     Returns:
@@ -1186,214 +614,435 @@ def generate_audit_pdf(
     source_csv: Path,
     output_pdf: Path,
     language: str = "zh",
+    report_no: str = "",
+    client_name: str = "",
+    project_code: str = "",
 ) -> None:
-    """
-    fpdf2-based PDF renderer with:
-    - language switch (full zh/en UI text)
-    - auto-width table
-    - auto page break for long tables
-    - watermark
+    """Single canonical fpdf2-based PDF generator.
+
+    Parameters
+    ----------
+    results       : audit results from validate_record()
+    source_csv    : path used only for the filename label on the cover
+    output_pdf    : destination path for the generated PDF
+    language      : "zh" (default) for Chinese-primary labels; "en" for English-primary
+    report_no     : optional report identifier shown on cover (e.g. "DPP-2026-PRE-ABCD1234")
+    client_name   : optional client/company name shown on cover
+    project_code  : optional project code shown on cover
     """
     try:
         from fpdf import FPDF
+        from fpdf.enums import XPos, YPos
     except ModuleNotFoundError as e:
-        raise ModuleNotFoundError(str(e) + "\n\nInstall with: pip install fpdf2") from e
+        raise ModuleNotFoundError(
+            str(e) + "\n\nInstall with:  source .venv/bin/activate && pip install fpdf2"
+        ) from e
 
-    L_ZH = {
-            "title": "欧盟 2023/1542 电池法案合规预审计报告",
-            "grade": "合规等级",
-            "time": "审计时间",
-            "src": "数据来源",
-            "summary": "型号级别审计结果汇总",
-            "model": "型号",
-            "status": "判定结果",
-            "risk": "风险等级",
-            "issues": "问题说明",
-            "radar": "关键指标雷达（六维评分）",
-            "gap": "差额修复清单",
-            "manual": "人工复核建议：潜在欺诈风险",
-        }
-    L_EN = {
-            "title": "EU 2023/1542 Battery Regulation Compliance Pre-Audit Report",
-            "grade": "Compliance Grade",
-            "time": "Audit Time",
-            "src": "Data Source",
-            "summary": "Model-level Audit Summary",
-            "model": "Model",
-            "status": "Status",
-            "risk": "Risk",
-            "issues": "Issues",
-            "radar": "Key Metrics Radar (Six Dimensions)",
-            "gap": "Gap Fixing List",
-            "manual": "Manual Review Recommended (Potential Fraud Risk)",
-        }
+    # ── Label dictionaries (switch by language) ────────────────────────────
+    _ZH = language == "zh"
 
-    grade = "A"
-    non = sum(1 for r in results if r.status == "NON_COMPLIANT")
-    flagged = sum(1 for r in results if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])))
-    total = len(results) or 1
-    if non / total > 0.35 or flagged > max(1, total // 3):
+    L_ZH: Dict[str, str] = {
+        "title": "欧盟 2023/1542 电池法案合规预审计报告",
+        "sub":   "EU 2023/1542 Battery Regulation – Compliance Pre-Audit Report",
+        "grade": "合规等级",
+        "time":  "审计时间",
+        "src":   "数据来源",
+        "client":"客户",
+        "proj":  "项目",
+        "rptno": "报告编号",
+        "scope": (
+            "适用范围：自 2027-02-18 起，LMT 电池、容量 > 2 kWh 的工业电池"
+            " 及电动汽车电池须具备电池护照（Art. 77(1)）。"
+        ),
+        "summary": "型号级别审计结果汇总",
+        "model":   "型号",
+        "status":  "判定结果",
+        "risk":    "风险等级",
+        "issues":  "问题说明 / 法规引用",
+        "compliant":     "COMPLIANT / 合规",
+        "non_compliant": "NON_COMPLIANT / 不合规",
+        "not_required":  "NOT_REQUIRED_DPP / 不强制执行",
+        "manual": "建议人工复核（潜在欺诈风险）",
+        "radar":  "合规六维指标雷达",
+        "gap":    "差额修复清单 (Gap Fixing List)",
+        "no_gap": "未检测到关键缺口；请保持定期数据更新与证据留痕。",
+        "rec_title": "专业建议",
+        "rec_body": (
+            "如出现 NON_COMPLIANT，请优先补齐电池护照强制字段，"
+            "对回收材料比例/碳足迹建立可验证的计算与证明文件（Art. 8, Art. 7, Annex XIII）。"
+        ),
+        "disclaimer": (
+            "免责声明：本报告为预审计/一致性检查用途，基于用户提供的数据字段进行自动化校验，"
+            "不构成法律意见或公告认证结论。最终准入以欧盟授权机构为准。"
+        ),
+        "watermark": "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT",
+    }
+
+    L_EN: Dict[str, str] = {
+        "title": "EU 2023/1542 Battery Regulation Compliance Pre-Audit Report",
+        "sub":   "Powered by DPP Expert 3.0 – Sino-British Sustainable Development Research Group",
+        "grade": "Compliance Grade",
+        "time":  "Audit Time",
+        "src":   "Data Source",
+        "client":"Client",
+        "proj":  "Project",
+        "rptno": "Report No.",
+        "scope": (
+            "Scope: From 18 Feb 2027, LMT batteries, industrial batteries > 2 kWh,"
+            " and EV batteries shall have a battery passport (Art. 77(1))."
+        ),
+        "summary": "Model-Level Audit Summary",
+        "model":   "Model",
+        "status":  "Status",
+        "risk":    "Risk Level",
+        "issues":  "Issues & Legal References",
+        "compliant":     "COMPLIANT",
+        "non_compliant": "NON_COMPLIANT",
+        "not_required":  "NOT_REQUIRED_DPP",
+        "manual": "Manual Review Recommended (Potential Fraud Risk)",
+        "radar":  "6-Dimension Compliance Metrics Radar",
+        "gap":    "Gap Fixing List",
+        "no_gap": "No critical gaps detected; maintain periodic data-quality monitoring.",
+        "rec_title": "Professional Recommendations",
+        "rec_body": (
+            "If NON_COMPLIANT is reported, prioritise completing mandatory Battery Passport data "
+            "and producing verifiable evidence for recycled content and carbon footprint "
+            "(Art. 8, Art. 7, Annex XIII)."
+        ),
+        "disclaimer": (
+            "Disclaimer: This report is for pre-audit / consistency-check purposes only, "
+            "based on automated validation of user-supplied data. It does not constitute "
+            "legal advice or official certification. Final market access rests with "
+            "EU-authorised conformity assessment bodies."
+        ),
+        "watermark": "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT",
+    }
+
+    L = L_ZH if _ZH else L_EN
+
+    # ── Compliance grade ───────────────────────────────────────────────────
+    total_cnt = len(results) or 1
+    non_cnt = sum(1 for r in results if r.status == "NON_COMPLIANT")
+    flag_cnt = sum(
+        1 for r in results
+        if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or []))
+    )
+    if non_cnt / total_cnt > 0.35 or flag_cnt > max(1, total_cnt // 3):
         grade = "C"
-    elif non / total > 0.10:
+    elif non_cnt / total_cnt > 0.10 or flag_cnt > 0:
         grade = "B"
-
-    pdf = FPDF(unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=12)
-
-    # Font registration
-    font_regular = "Helvetica"
-    font_bold = "Helvetica"
-    if language == "zh":
-        zh_font = "/Library/Fonts/Arial Unicode.ttf"
-        if Path(zh_font).exists():
-            pdf.add_font("ArialUnicode", "", zh_font)
-            pdf.add_font("ArialUnicode", "B", zh_font)
-            font_regular = "ArialUnicode"
-            font_bold = "ArialUnicode"
-
-    # If Chinese was requested but a Unicode font is unavailable,
-    # gracefully fall back to English labels to avoid rendering failure.
-    if language == "zh" and font_regular == "Helvetica":
-        L = L_EN
     else:
-        L = L_ZH if language == "zh" else L_EN
+        grade = "A"
 
-    def watermark():
-        pdf.set_text_color(220, 220, 220)
-        pdf.set_font("Helvetica", "B", 20)
-        with pdf.rotation(30, x=105, y=150):
-            pdf.text(20, 150, "CONFIDENTIAL PRE-AUDIT REPORT - BY DPP INSIGHT")
+    # ── Font setup ─────────────────────────────────────────────────────────
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.set_margins(left=18, top=15, right=18)
+
+    font_r = "Helvetica"   # regular
+    font_b = "Helvetica"   # bold (same; use style="B")
+
+    if _ZH:
+        cjk_candidates = [
+            ("/Library/Fonts/Arial Unicode.ttf",      "ArialUnicode"),
+            ("/System/Library/Fonts/PingFang.ttc",    "PingFang"),
+            ("/System/Library/Fonts/STHeiti Light.ttc","STHeitiL"),
+        ]
+        for fpath, fname in cjk_candidates:
+            if Path(fpath).exists():
+                try:
+                    pdf.add_font(fname, "", fpath)
+                    pdf.add_font(fname, "B", fpath)
+                    font_r = fname
+                    font_b = fname
+                    break
+                except Exception:
+                    continue
+        # If no CJK font found, fall back to English labels to avoid tofu
+        if font_r == "Helvetica":
+            L = L_EN
+
+    # ── Helper: watermark (call after add_page) ────────────────────────────
+    def _watermark() -> None:
+        pdf.set_text_color(210, 210, 210)
+        pdf.set_font("Helvetica", "B", 18)
+        with pdf.rotation(32, x=105, y=148):
+            pdf.text(15, 148, L["watermark"])
         pdf.set_text_color(0, 0, 0)
 
-    # Cover
+    # ── Helper: cell with newline (replaces deprecated ln=1) ──────────────
+    def _cell(w: float, h: float, txt: str, **kw) -> None:
+        pdf.cell(w, h, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, **kw)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # PAGE 1 — COVER
+    # ═══════════════════════════════════════════════════════════════════════
     pdf.add_page()
-    watermark()
-    pdf.set_font(font_bold, "B", 18)
-    pdf.multi_cell(0, 10, L["title"])
-    pdf.ln(2)
-    pdf.set_font(font_bold, "B", 14)
-    pdf.cell(0, 9, f"{L['grade']}: {grade}", ln=1)
-    pdf.set_font(font_regular, "", 11)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    pdf.cell(0, 7, f"{L['time']}: {now}", ln=1)
-    pdf.cell(0, 7, f"{L['src']}: {source_csv.name}", ln=1)
+    _watermark()
 
-    # Summary table
-    pdf.add_page()
-    watermark()
-    pdf.set_font(font_bold, "B", 13)
-    pdf.cell(0, 8, L["summary"], ln=1)
-    pdf.ln(1)
-
-    headers = [L["model"], L["status"], L["risk"], L["issues"]]
-    rows = []
-    for r in results:
-        issues = "; ".join(r.missing_fields or r.issues[:3])
-        if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])):
-            issues = f"{issues} | {L['manual']}"
-        rows.append([r.model, r.status, r.risk_level, issues])
-
-    # auto-width based on header + sample data
-    page_w = 210 - 18 - 18
-    widths = [30, 28, 20, page_w - 30 - 28 - 20]
-    sample_n = min(len(rows), 20)
-    for i in range(3):
-        max_len = len(headers[i])
-        for r in rows[:sample_n]:
-            max_len = max(max_len, len(str(r[i])))
-        widths[i] = max(widths[i], min(45, 4 + max_len * 1.6))
-    # Ensure width budget is always valid and issue-column keeps enough room.
-    base_sum = widths[0] + widths[1] + widths[2]
-    min_issue_col = 70
-    if base_sum > page_w - min_issue_col:
-        scale = (page_w - min_issue_col) / base_sum
-        widths[0] = max(24, widths[0] * scale)
-        widths[1] = max(22, widths[1] * scale)
-        widths[2] = max(18, widths[2] * scale)
-    widths[3] = max(min_issue_col, page_w - widths[0] - widths[1] - widths[2])
-
-    # Header row
-    pdf.set_font(font_bold, "B", 10)
-    for h, w in zip(headers, widths):
-        pdf.set_fill_color(11, 61, 145)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(w, 8, h, border=1, fill=True)
-    pdf.ln(8)
+    pdf.ln(18)
+    pdf.set_font(font_b, "B", 20)
+    pdf.set_text_color(11, 61, 145)
+    pdf.multi_cell(0, 11, L["title"], new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
     pdf.set_text_color(0, 0, 0)
 
-    # Data rows with auto page breaks
-    pdf.set_font(font_regular, "", 9)
-    for r in rows:
-        # estimate row height from issue column
-        issue_text = str(r[3]).replace("_", "_ ").replace("/", "/ ")
-        lines = max(1, int(len(issue_text) / max(1, (widths[3] / 2.2))))
-        row_h = min(26, max(7, lines * 4))
+    pdf.ln(3)
+    pdf.set_font(font_r, "", 11)
+    pdf.multi_cell(0, 7, L["sub"], new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
 
-        if pdf.get_y() + row_h > 285:
+    pdf.ln(8)
+    pdf.set_draw_color(11, 61, 145)
+    pdf.set_line_width(0.8)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(8)
+
+    # Grade badge
+    grade_color = {
+        "A": (27, 94, 32),
+        "B": (230, 126, 34),
+        "C": (176, 0, 32),
+    }.get(grade, (0, 0, 0))
+    pdf.set_font(font_b, "B", 28)
+    pdf.set_text_color(*grade_color)
+    pdf.multi_cell(0, 14, f"{L['grade']}: {grade}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.ln(6)
+    pdf.set_font(font_r, "", 11)
+    now_str = datetime.now().strftime("%Y-%m-%d  %H:%M")
+    meta_rows = [
+        (L["time"],   now_str),
+        (L["src"],    source_csv.name),
+    ]
+    if client_name:
+        meta_rows.insert(0, (L["client"], client_name))
+    if project_code:
+        meta_rows.insert(1, (L["proj"],   project_code))
+    if report_no:
+        meta_rows.insert(2, (L["rptno"],  report_no))
+
+    for label, val in meta_rows:
+        pdf.set_font(font_b, "B", 10)
+        pdf.cell(42, 7, f"{label}:", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_font(font_r, "", 10)
+        _cell(0, 7, val)
+
+    pdf.ln(6)
+    pdf.set_font(font_r, "", 9)
+    pdf.set_text_color(80, 80, 80)
+    pdf.multi_cell(0, 5, L["scope"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(0, 0, 0)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # PAGE 2+ — AUDIT RESULTS TABLE
+    # ═══════════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _watermark()
+
+    pdf.set_font(font_b, "B", 13)
+    pdf.set_text_color(11, 61, 145)
+    _cell(0, 8, L["summary"])
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(1)
+
+    # Build row data
+    def _status_label(status: str) -> str:
+        if status == "COMPLIANT":
+            return L["compliant"]
+        if status == "NON_COMPLIANT":
+            return L["non_compliant"]
+        return L["not_required"]
+
+    headers = [L["model"], L["status"], L["risk"], L["issues"]]
+    rows_data = []
+    for r in results:
+        issue_txt = "; ".join(r.missing_fields) if r.missing_fields else (
+            r.issues[0] if r.issues else "-"
+        )
+        if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])):
+            flags_str = ", ".join(r.fraud_flags)
+            issue_txt = f"{issue_txt} [{L['manual']}: {flags_str}]"
+        rows_data.append([
+            str(r.model)[:60],
+            _status_label(r.status),
+            str(r.risk_level),
+            issue_txt,
+        ])
+
+    # Column widths
+    page_w = 210 - 18 - 18   # usable width mm
+    min_issue = 68
+    w0, w1, w2 = 34, 30, 20
+    # Widen model/status columns based on content
+    for i, (base_w, col_idx) in enumerate([(w0, 0), (w1, 1), (w2, 2)]):
+        max_len = len(headers[col_idx])
+        for row in rows_data[:20]:
+            max_len = max(max_len, len(str(row[col_idx])))
+        widths_computed = min(base_w + 10, 4 + max_len * 1.8)
+        if i == 0:
+            w0 = max(base_w, widths_computed)
+        elif i == 1:
+            w1 = max(base_w, widths_computed)
+        else:
+            w2 = max(base_w, widths_computed)
+    base_sum = w0 + w1 + w2
+    if base_sum > page_w - min_issue:
+        scale = (page_w - min_issue) / base_sum
+        w0 = max(24, w0 * scale)
+        w1 = max(22, w1 * scale)
+        w2 = max(16, w2 * scale)
+    w3 = max(min_issue, page_w - w0 - w1 - w2)
+    col_widths = [w0, w1, w2, w3]
+
+    def _draw_header() -> None:
+        pdf.set_font(font_b, "B", 9)
+        pdf.set_fill_color(11, 61, 145)
+        pdf.set_text_color(255, 255, 255)
+        for h, cw in zip(headers, col_widths):
+            pdf.cell(cw, 8, h[:40], border=1, fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.ln(8)
+        pdf.set_text_color(0, 0, 0)
+
+    _draw_header()
+
+    for ri, row in enumerate(rows_data):
+        issue_text = str(row[3]).replace("_", "_ ").replace("/", "/ ")
+        # Estimate height
+        chars_per_line = max(1, int(w3 / 2.1))
+        n_lines = max(1, len(issue_text) // chars_per_line + 1)
+        row_h = max(7, min(28, n_lines * 4))
+
+        if pdf.get_y() + row_h > 283:
             pdf.add_page()
-            watermark()
-            pdf.set_font(font_bold, "B", 10)
-            for h, w in zip(headers, widths):
-                pdf.set_fill_color(11, 61, 145)
-                pdf.set_text_color(255, 255, 255)
-                pdf.cell(w, 8, h, border=1, fill=True)
-            pdf.ln(8)
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font(font_regular, "", 9)
+            _watermark()
+            _draw_header()
+
+        fill = ri % 2 == 0
+        fill_color = (243, 244, 246) if fill else (255, 255, 255)
+        pdf.set_fill_color(*fill_color)
+
+        # Status text color
+        st_val = results[ri].status
+        if st_val == "COMPLIANT":
+            pdf.set_text_color(27, 94, 32)
+        elif st_val == "NON_COMPLIANT":
+            pdf.set_text_color(176, 0, 32)
+        else:
+            pdf.set_text_color(80, 80, 80)
 
         x0, y0 = pdf.get_x(), pdf.get_y()
-        pdf.cell(widths[0], row_h, str(r[0])[:80], border=1)
-        pdf.cell(widths[1], row_h, str(r[1])[:40], border=1)
-        pdf.cell(widths[2], row_h, str(r[2])[:20], border=1)
-        pdf.set_xy(x0 + widths[0] + widths[1] + widths[2], y0)
-        pdf.multi_cell(widths[3], 4, issue_text, border=1)
+
+        pdf.set_font(font_r, "", 8)
+        pdf.cell(w0, row_h, str(row[0])[:60], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(w1, row_h, str(row[1])[:40], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(w2, row_h, str(row[2])[:20], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        # Issue column: multi_cell (may wrap)
+        pdf.set_xy(x0 + w0 + w1 + w2, y0)
+        pdf.set_text_color(0, 0, 0)
+        try:
+            pdf.multi_cell(w3, 4, issue_text, border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        except Exception:
+            pdf.multi_cell(w3, 4, issue_text[:200], border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_xy(x0, max(y0 + row_h, pdf.get_y()))
 
-    # Radar text + Gap list
+    # ═══════════════════════════════════════════════════════════════════════
+    # PAGE — RADAR + GAP LIST + RECOMMENDATIONS
+    # ═══════════════════════════════════════════════════════════════════════
     pdf.add_page()
-    watermark()
-    pdf.set_font(font_bold, "B", 12)
-    pdf.cell(0, 8, L["radar"], ln=1)
-    metrics = {
-        "Safety": "extinguishing_agent",
-        "Environmental": "carbon_footprint_total_kg_co2e",
-        "Traceability": "unique_identifier",
-        "Recycled": "recycled_lithium_pct",
-        "Performance": "rated_capacity_ah",
-        "BMS": "bms_access_permissions",
+    _watermark()
+
+    # Six-dimension radar (text-bar form)
+    pdf.set_font(font_b, "B", 12)
+    pdf.set_text_color(11, 61, 145)
+    _cell(0, 8, L["radar"])
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(1)
+
+    dim_keys = {
+        "Safety":      ["extinguishing_agent", "thermal_runaway_prevention", "explosion_proof_declaration"],
+        "Environmental":["carbon_footprint_total_kg_co2e", "carbon_physical_plausibility"],
+        "Traceability": ["unique_identifier", "manufacturer_id", "mine_coordinates"],
+        "Recycled":    ["recycled_lithium_pct", "recycled_cobalt_pct", "recycled_nickel_pct", "recycled_lead_pct"],
+        "Performance": ["rated_capacity_ah", "nominal_voltage_v", "rated_power_w", "expected_lifetime_cycles"],
+        "BMS Access":  ["bms_access_permissions"],
     }
     mandatory = [r for r in results if r.status in {"COMPLIANT", "NON_COMPLIANT"}]
     total_m = len(mandatory) or 1
-    pdf.set_font(font_regular, "", 10)
-    for dim, key in metrics.items():
-        met = sum(1 for r in mandatory if ((r.metrics.get(key, {}) or {}).get("met") is True))
+    pdf.set_font(font_r, "", 10)
+    for dim, keys in dim_keys.items():
+        met = sum(
+            1 for r in mandatory
+            if all(((r.metrics.get(k, {}) or {}).get("met") is True) for k in keys)
+        )
         score = met / total_m
-        bars = "#" * int(round(score * 20))
-        pdf.cell(0, 7, f"{dim}: {met}/{total_m} [{bars:<20}]", ln=1)
-
-    pdf.ln(4)
-    pdf.set_font(font_bold, "B", 12)
-    pdf.set_x(pdf.l_margin)
-    pdf.cell(0, 8, L["gap"], ln=1)
-    pdf.set_font(font_regular, "", 10)
-    dept_actions = {
-        "recycled_": "Procurement & Sustainability: provide recycled-material proof and update declarations.",
-        "carbon_footprint": "LCA/ESG: recalculate and verify carbon footprint data.",
-        "bms_access": "BMS Team: disclose read/write access policy.",
-        "manufacturer_id": "Master Data Team: repair manufacturer identity format and registry consistency.",
-        "extinguishing_agent": "EHS Team: complete safety extinguishing guidance field.",
-    }
-    issue_pool = [m for r in results for m in (r.missing_fields or [])]
-    used = set()
-    for issue in issue_pool:
-        for token, action in dept_actions.items():
-            if token in issue and action not in used:
-                used.add(action)
-                pdf.set_x(pdf.l_margin)
-                pdf.multi_cell(0, 6, f"- {action}")
-    if not used:
+        bar_filled = int(round(score * 20))
+        bar = "#" * bar_filled + "." * (20 - bar_filled)
+        pct = f"{score:.0%}"
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 6, "- No critical gap found; keep periodic evidence updates.")
+        try:
+            _cell(0, 6, f"  {dim:<16}  [{bar}]  {pct}  ({met}/{total_m})")
+        except Exception:
+            _cell(0, 6, f"  {dim}:  {pct}  ({met}/{total_m})")
+
+    pdf.ln(5)
+
+    # Gap Fixing List
+    pdf.set_font(font_b, "B", 12)
+    pdf.set_text_color(11, 61, 145)
+    _cell(0, 8, L["gap"])
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(1)
+    pdf.set_font(font_r, "", 10)
+
+    dept_map = [
+        ("recycled_",         "Procurement & Sustainability",
+         "Collect recycled-material certificates and update recycled-content declarations."),
+        ("carbon_footprint",  "LCA / ESG Team",
+         "Recalculate lifecycle carbon footprint and provide audited methodology evidence."),
+        ("bms_access",        "BMS Firmware & Diagnostics",
+         "Publish read/write access policy and technical interface control note."),
+        ("extinguishing_agent","EHS & Product Safety",
+         "Provide extinguishing-agent specification and hazard response instructions."),
+        ("manufacturer_id",   "Master Data Governance",
+         "Fix manufacturer identity schema and traceability key integrity."),
+        ("hazardous_substances","Compliance Documentation",
+         "Complete hazardous-substance declaration linked to BOM/SDS records."),
+        ("rated_capacity",    "R&D Validation",
+         "Provide validated electrochemical performance measurements."),
+    ]
+    issue_pool = [m for r in results for m in (r.missing_fields or [])]
+    used_actions: set = set()
+    for issue in issue_pool:
+        for token, dept, action in dept_map:
+            if token in issue and action not in used_actions:
+                used_actions.add(action)
+                pdf.set_x(pdf.l_margin)
+                try:
+                    pdf.multi_cell(0, 5, f"  [{dept}] {action}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                except Exception:
+                    pdf.multi_cell(0, 5, f"  {action}"[:200], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    if not used_actions:
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 5, f"  {L['no_gap']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.ln(5)
+
+    # Recommendations
+    pdf.set_font(font_b, "B", 12)
+    pdf.set_text_color(11, 61, 145)
+    _cell(0, 8, L["rec_title"])
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font(font_r, "", 10)
+    pdf.ln(1)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, 5, L["rec_body"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.ln(6)
+    pdf.set_font(font_r, "", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, 5, L["disclaimer"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.output(str(output_pdf))
 
