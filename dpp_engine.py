@@ -981,12 +981,17 @@ def generate_audit_pdf(
     headers = [L["model"], L["status"], L["risk"], L["issues"]]
     rows_data = []
     for r in results:
-        issue_txt = "; ".join(r.missing_fields) if r.missing_fields else (
-            r.issues[0] if r.issues else "-"
-        )
+        # Build issue lines — one issue per line for readability
+        issues_list: list[str] = []
+        if r.missing_fields:
+            issues_list.extend(r.missing_fields)
+        elif r.issues:
+            issues_list.extend(r.issues)
         if any(f in {"HIGH_RISK", "DATA_UNREALISTIC"} for f in (r.fraud_flags or [])):
-            flags_str = ", ".join(r.fraud_flags)
-            issue_txt = f"{issue_txt} [{L['manual']}: {flags_str}]"
+            issues_list.append(f"[{L['manual']}]: {', '.join(r.fraud_flags)}")
+        if not issues_list:
+            issues_list = ["-"]
+        issue_txt = "\n".join(f"• {item}" for item in issues_list)
         rows_data.append([
             str(r.model)[:60],
             _status_label(r.status),
@@ -1030,46 +1035,97 @@ def generate_audit_pdf(
 
     _draw_header()
 
-    for ri, row in enumerate(rows_data):
-        issue_text = str(row[3]).replace("_", "_ ").replace("/", "/ ")
-        # Estimate height
-        chars_per_line = max(1, int(w3 / 2.1))
-        n_lines = max(1, len(issue_text) // chars_per_line + 1)
-        row_h = max(7, min(28, n_lines * 4))
+    LINE_H = 4.2   # line height inside cells (mm)
 
+    def _count_lines(text: str, col_w: float, font_size: int = 8) -> int:
+        """Estimate how many wrapped lines 'text' needs inside col_w mm."""
+        # Arial Unicode is ~0.5 * font_size per char (mm) — conservative estimate
+        char_w = font_size * 0.45
+        chars_per_line = max(1, int(col_w / char_w))
+        lines = 0
+        for para in text.split("\n"):
+            lines += max(1, -(-len(para) // chars_per_line))  # ceiling div
+        return lines
+
+    def _draw_row(ri: int, row: list, result) -> None:
+        """Draw one table row with ALL cells at the same computed height."""
+        # ── 1. Compute row height from the tallest cell ────────────────────
+        issue_text = str(row[3])
+        n_lines = max(
+            _count_lines(str(row[0]), w0),
+            _count_lines(str(row[1]), w1),
+            _count_lines(str(row[2]), w2),
+            _count_lines(issue_text, w3),
+        )
+        row_h = max(7.0, min(40.0, n_lines * LINE_H + 2))
+
+        # ── 2. Page-break guard ───────────────────────────────────────────
         if pdf.get_y() + row_h > 283:
             pdf.add_page()
             _watermark()
             _draw_header()
 
-        fill = ri % 2 == 0
-        fill_color = (243, 244, 246) if fill else (255, 255, 255)
-        pdf.set_fill_color(*fill_color)
+        x0 = pdf.l_margin
+        y0 = pdf.get_y()
+        fill_rgb = (243, 244, 246) if ri % 2 == 0 else (255, 255, 255)
 
-        # Status text color
-        st_val = results[ri].status
-        if st_val == "COMPLIANT":
+        # ── 3. Draw background rectangles for ALL columns at equal height ─
+        pdf.set_draw_color(180, 180, 180)
+        pdf.set_line_width(0.2)
+        x = x0
+        for cw in col_widths:
+            pdf.set_fill_color(*fill_rgb)
+            pdf.rect(x, y0, cw, row_h, style="FD")
+            x += cw
+
+        # ── 4. Write text into each column ────────────────────────────────
+        cell_pad = 1.0   # left padding inside cell (mm)
+
+        # Col 0 — Model
+        pdf.set_font(font_r, "", 8)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x0 + cell_pad, y0 + 1)
+        pdf.multi_cell(w0 - cell_pad, LINE_H, str(row[0])[:60],
+                       border=0, fill=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Col 1 — Status (coloured)
+        if result.status == "COMPLIANT":
             pdf.set_text_color(27, 94, 32)
-        elif st_val == "NON_COMPLIANT":
+            pdf.set_font(font_b, "B", 8)
+        elif result.status == "NON_COMPLIANT":
             pdf.set_text_color(176, 0, 32)
+            pdf.set_font(font_b, "B", 8)
         else:
             pdf.set_text_color(80, 80, 80)
+            pdf.set_font(font_r, "", 8)
+        pdf.set_xy(x0 + w0 + cell_pad, y0 + 1)
+        pdf.multi_cell(w1 - cell_pad, LINE_H, str(row[1])[:40],
+                       border=0, fill=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-        x0, y0 = pdf.get_x(), pdf.get_y()
-
+        # Col 2 — Risk level
+        pdf.set_text_color(0, 0, 0)
         pdf.set_font(font_r, "", 8)
-        pdf.cell(w0, row_h, str(row[0])[:60], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.cell(w1, row_h, str(row[1])[:40], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(w2, row_h, str(row[2])[:20], border=1, fill=fill, new_x=XPos.RIGHT, new_y=YPos.TOP)
-        # Issue column: multi_cell (may wrap)
-        pdf.set_xy(x0 + w0 + w1 + w2, y0)
-        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x0 + w0 + w1 + cell_pad, y0 + 1)
+        pdf.multi_cell(w2 - cell_pad, LINE_H, str(row[2])[:20],
+                       border=0, fill=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Col 3 — Issues / legal references
+        pdf.set_text_color(60, 60, 60)
+        pdf.set_font(font_r, "", 7.5)
+        pdf.set_xy(x0 + w0 + w1 + w2 + cell_pad, y0 + 1)
         try:
-            pdf.multi_cell(w3, 4, issue_text, border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.multi_cell(w3 - cell_pad, LINE_H, issue_text,
+                           border=0, fill=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         except Exception:
-            pdf.multi_cell(w3, 4, issue_text[:200], border=1, fill=fill, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_xy(x0, max(y0 + row_h, pdf.get_y()))
+            pdf.multi_cell(w3 - cell_pad, LINE_H, issue_text[:300],
+                           border=0, fill=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # ── 5. Advance cursor to next row ─────────────────────────────────
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x0, y0 + row_h)
+
+    for ri, row in enumerate(rows_data):
+        _draw_row(ri, row, results[ri])
 
     # ═══════════════════════════════════════════════════════════════════════
     # PAGE — RADAR + GAP LIST + RECOMMENDATIONS

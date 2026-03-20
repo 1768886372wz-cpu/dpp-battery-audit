@@ -1024,12 +1024,37 @@ with tab_audit:
 
         if st.session_state.get("pdf_bytes"):
             st.markdown("<br>", unsafe_allow_html=True)
-            st.download_button(
-                t["download_pdf"],
-                data=st.session_state["pdf_bytes"],
-                file_name=st.session_state.get("pdf_filename", "DPP_Audit_Report.pdf"),
-                mime="application/pdf",
-                use_container_width=True,
+
+            col_dl, col_gap = st.columns([1, 2])
+            with col_dl:
+                st.download_button(
+                    t["download_pdf"],
+                    data=st.session_state["pdf_bytes"],
+                    file_name=st.session_state.get("pdf_filename", "DPP_Audit_Report.pdf"),
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+
+            # ── Inline PDF preview ──────────────────────────────────────
+            import base64
+            b64_pdf = base64.b64encode(st.session_state["pdf_bytes"]).decode()
+            preview_label = "📄 报告预览" if lang == "zh" else "📄 Report Preview"
+            st.markdown(f"**{preview_label}**")
+            st.markdown(
+                f"""
+                <iframe
+                    src="data:application/pdf;base64,{b64_pdf}"
+                    width="100%"
+                    height="820"
+                    style="border:1px solid #334155; border-radius:8px; margin-top:6px;"
+                    type="application/pdf">
+                    <p style="color:#94a3b8">
+                        您的浏览器不支持内嵌 PDF 预览，请点击上方按钮下载后查看。<br>
+                        Your browser does not support inline PDF preview. Please use the download button above.
+                    </p>
+                </iframe>
+                """,
+                unsafe_allow_html=True,
             )
 
     elif uploaded_file is None:
