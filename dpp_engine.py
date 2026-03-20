@@ -609,27 +609,31 @@ def iter_csv(path: Path) -> Iterable[Dict[str, Any]]:
 
 
 def generate_audit_pdf(
-    *,
     results: List[DppResult],
-    source_csv: Path,
-    output_pdf: Path,
     language: str = "zh",
     report_no: str = "",
     client_name: str = "",
     project_code: str = "",
-) -> None:
-    """Single canonical fpdf2-based PDF generator.
+) -> bytes:
+    """Build an fpdf2 PDF audit report and return the raw PDF bytes.
 
     Parameters
     ----------
-    results       : audit results from validate_record()
-    source_csv    : path used only for the filename label on the cover
-    output_pdf    : destination path for the generated PDF
-    language      : "zh" (default) for Chinese-primary labels; "en" for English-primary
-    report_no     : optional report identifier shown on cover (e.g. "DPP-2026-PRE-ABCD1234")
-    client_name   : optional client/company name shown on cover
-    project_code  : optional project code shown on cover
+    results      : list of DppResult from validate_record()
+    language     : "zh" Chinese-primary labels (default); "en" English-primary
+    report_no    : report identifier printed on the cover (may be empty)
+    client_name  : client / company name printed on the cover (may be empty)
+    project_code : project code printed on the cover (may be empty)
+
+    Returns
+    -------
+    bytes : raw PDF content — write to a file or pass directly to st.download_button
     """
+    # Apply defaults for any falsy inputs
+    language     = language     or "zh"
+    report_no    = report_no    or ""
+    client_name  = client_name  or ""
+    project_code = project_code or ""
     try:
         from fpdf import FPDF
         from fpdf.enums import XPos, YPos
@@ -812,7 +816,6 @@ def generate_audit_pdf(
     now_str = datetime.now().strftime("%Y-%m-%d  %H:%M")
     meta_rows = [
         (L["time"],   now_str),
-        (L["src"],    source_csv.name),
     ]
     if client_name:
         meta_rows.insert(0, (L["client"], client_name))
@@ -1044,7 +1047,7 @@ def generate_audit_pdf(
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(0, 5, L["disclaimer"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    pdf.output(str(output_pdf))
+    return bytes(pdf.output())
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1117,7 +1120,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if pdf_arg not in {"", "none", "off", "false", "0"}:
             out_pdf = Path(args.pdf)
             try:
-                generate_audit_pdf(results=results, source_csv=csv_path, output_pdf=out_pdf)
+                out_pdf.write_bytes(generate_audit_pdf(results))
                 if not args.json:
                     print("\n" + "=" * 60)
                     print(f"PDF report written: {out_pdf.resolve()}")

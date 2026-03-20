@@ -7,7 +7,6 @@ import csv
 import hashlib
 import math
 import os
-import tempfile
 import time
 from io import StringIO
 from pathlib import Path
@@ -838,19 +837,15 @@ with tab_audit:
             pdf_filename = f"DPP_Audit_Report_{safe_client}_{safe_proj}.pdf"
 
             progress_bar.progress(95, text=steps[-1])
-            with tempfile.TemporaryDirectory() as td:
-                out_path = Path(td) / pdf_filename
-                generate_audit_pdf(
-                    results=results,
-                    source_csv=Path(uploaded_file.name),
-                    output_pdf=out_path,
-                    language=lang,
-                    report_no=report_no,
-                    client_name=client_name,
-                    project_code=project_code,
-                )
-                st.session_state["pdf_bytes"] = out_path.read_bytes()
-                st.session_state["pdf_filename"] = pdf_filename
+            pdf_bytes = generate_audit_pdf(
+                results,
+                lang,
+                report_no,
+                client_name,
+                project_code,
+            )
+            st.session_state["pdf_bytes"] = pdf_bytes
+            st.session_state["pdf_filename"] = pdf_filename
 
             progress_bar.progress(100, text=t["done"])
             time.sleep(0.3)
