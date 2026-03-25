@@ -1,0 +1,221 @@
+{
+  "_metadata": {
+    "description": "15组极端测试用例，覆盖所有核查维度",
+    "created": "2026-03-24",
+    "usage": "python run_tests.py"
+  },
+  "cases": [
+    {
+      "id": "TC01",
+      "name": "完美绿色电池（全部 PASS）",
+      "category": "IDEAL",
+      "expected_risk_level": "PASS",
+      "input": {
+        "battery_type": "LFP",
+        "battery_category": "Industrial",
+        "energy_usage": 65,
+        "recycled_rate": 7.5,
+        "carbon_footprint_kg_co2e_per_kwh": 58,
+        "mineral_origin": "Australia",
+        "manufacturing_country": "France",
+        "specific_energy_wh_per_kg": 160,
+        "cycle_life_cycles": 3500,
+        "pefcr_stages_declared": ["raw_material_extraction","material_processing","electrode_coating","cell_assembly","formation_cycling","pack_assembly","transport_to_eu","end_of_life"]
+      },
+      "monthly_energy_data": [64.2, 65.8, 63.9, 66.1, 64.7, 65.3, 63.5, 66.4, 64.9, 65.1, 64.3, 65.7]
+    },
+    {
+      "id": "TC02",
+      "name": "数据造假高手 — 能耗物理不可能",
+      "category": "FRAUD_ENERGY",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 8,
+        "recycled_rate": 6,
+        "carbon_footprint_kg_co2e_per_kwh": 55
+      }
+    },
+    {
+      "id": "TC03",
+      "name": "比能量造假 — 违反能量守恒",
+      "category": "FRAUD_PHYSICS",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 65,
+        "recycled_rate": 7,
+        "specific_energy_wh_per_kg": 350,
+        "cycle_life_cycles": 3000
+      },
+      "description": "LFP 最优商业电芯 210 Wh/kg，声称 350 Wh/kg 物理不可能"
+    },
+    {
+      "id": "TC04",
+      "name": "NCM811 循环寿命造假",
+      "category": "FRAUD_PHYSICS",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "NCM",
+        "energy_usage": 85,
+        "recycled_rate": 8,
+        "specific_energy_wh_per_kg": 280,
+        "cycle_life_cycles": 8000
+      },
+      "description": "NCM 最大商业循环寿命 3000 次，声称 8000 次不可能"
+    },
+    {
+      "id": "TC05",
+      "name": "合规缺口 — 回收率严重不足",
+      "category": "COMPLIANCE_GAP",
+      "expected_risk_level": "COMPLIANCE_GAP",
+      "input": {
+        "battery_type": "NCM",
+        "battery_category": "EV",
+        "energy_usage": 85,
+        "recycled_rate": 1.5,
+        "mineral_origin": "Chile"
+      }
+    },
+    {
+      "id": "TC06",
+      "name": "供应链双重风险 — 新疆 + 无碳足迹申报",
+      "category": "GEOPOLITICAL_RISK",
+      "expected_risk_level": "any",
+      "input": {
+        "battery_type": "NCM",
+        "battery_category": "EV",
+        "energy_usage": 80,
+        "recycled_rate": 5,
+        "mineral_origin": "Xinjiang",
+        "manufacturing_country": "China"
+      },
+      "description": "EV 电池未申报碳足迹（2025-02-18 已生效）+ 新疆供应链双重风险，应至少为 COMPLIANCE_GAP"
+    },
+    {
+      "id": "TC07",
+      "name": "DRC 钴矿 — 无尽职调查文件",
+      "category": "GEOPOLITICAL_RISK",
+      "expected_risk_level": "any",
+      "input": {
+        "battery_type": "NCM",
+        "energy_usage": 90,
+        "recycled_rate": 12,
+        "mineral_origin": "DRC",
+        "carbon_footprint_kg_co2e_per_kwh": 85
+      }
+    },
+    {
+      "id": "TC08",
+      "name": "月度数据人工修改 — 变异系数趋零",
+      "category": "FORENSIC_FRAUD",
+      "expected_forensic_risk": "HIGH",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 65,
+        "recycled_rate": 7
+      },
+      "monthly_energy_data": [65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0, 65.0],
+      "description": "连续 12 个月完全相同，CV=0，检测到人工修改痕迹"
+    },
+    {
+      "id": "TC09",
+      "name": "月度数据整数偏好异常",
+      "category": "FORENSIC_FRAUD",
+      "expected_forensic_risk": "MEDIUM",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 65
+      },
+      "monthly_energy_data": [64.0, 65.0, 66.0, 65.0, 64.0, 65.0, 66.0, 65.0, 64.0, 65.0, 66.0, 65.0],
+      "description": "所有数值均为整数，精度异常（真实计量有小数）"
+    },
+    {
+      "id": "TC10",
+      "name": "PEFCR 边界不完整 — 漏报关键阶段",
+      "category": "PEFCR_GAP",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 65,
+        "recycled_rate": 7,
+        "carbon_footprint_kg_co2e_per_kwh": 45,
+        "pefcr_stages_declared": ["cell_assembly", "pack_assembly"]
+      },
+      "description": "仅申报了 2/8 个 PEFCR 必须阶段，漏报原材料开采等高碳环节，惩罚性补全后碳足迹将大幅超过申报值"
+    },
+    {
+      "id": "TC11",
+      "name": "合规边缘产品 — 各维度刚好达标",
+      "category": "BORDERLINE",
+      "expected_risk_level": "any",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 51,
+        "recycled_rate": 6.1,
+        "carbon_footprint_kg_co2e_per_kwh": 41,
+        "mineral_origin": "Australia",
+        "specific_energy_wh_per_kg": 120
+      }
+    },
+    {
+      "id": "TC12",
+      "name": "碳足迹申报值物理不可信 — 远低于下限",
+      "category": "FRAUD_CARBON",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "NCM",
+        "energy_usage": 85,
+        "recycled_rate": 8,
+        "carbon_footprint_kg_co2e_per_kwh": 5
+      },
+      "description": "NCM 全生命周期碳足迹下限为 55 kg CO2e/kWh，声称 5 kg 物理不可信"
+    },
+    {
+      "id": "TC13",
+      "name": "绿电声明无 I-REC — 切换为当地煤电因子",
+      "category": "GREEN_ELECTRICITY_UNVERIFIED",
+      "expected_risk_level": "any",
+      "input": {
+        "battery_type": "LFP",
+        "energy_usage": 65,
+        "recycled_rate": 7,
+        "carbon_footprint_kg_co2e_per_kwh": 12,
+        "manufacturing_country": "China",
+        "green_electricity_claimed": true,
+        "irec_certificate_id": ""
+      },
+      "description": "声称 100% 绿电但无 I-REC 编号，按内蒙古/新疆煤电因子重算碳足迹将远超申报值"
+    },
+    {
+      "id": "TC14",
+      "name": "体积能量密度造假",
+      "category": "FRAUD_PHYSICS",
+      "expected_risk_level": "RED_FLAG",
+      "input": {
+        "battery_type": "NCM",
+        "energy_usage": 85,
+        "recycled_rate": 8,
+        "specific_energy_wh_per_kg": 285,
+        "volumetric_energy_wh_per_l": 950
+      },
+      "description": "NCM 最优商业体积能量密度 750 Wh/L，声称 950 Wh/L 超过物理极限"
+    },
+    {
+      "id": "TC15",
+      "name": "印尼镍矿 + 极高碳强度 — 碳足迹严重低估",
+      "category": "CARBON_UNDERREPORT",
+      "expected_risk_level": "any",
+      "input": {
+        "battery_type": "NCM",
+        "battery_category": "EV",
+        "energy_usage": 95,
+        "recycled_rate": 4,
+        "carbon_footprint_kg_co2e_per_kwh": 55,
+        "mineral_origin": "Indonesia",
+        "manufacturing_country": "Indonesia"
+      },
+      "description": "印尼电网碳强度 740 gCO2/kWh，按实际能耗核算碳足迹应 >120 kg CO2e/kWh，申报值 55 严重低估"
+    }
+  ]
+}

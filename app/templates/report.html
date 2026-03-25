@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"/>
+<title>DPP Pre-Audit Report</title>
+<style>
+/* ── 字体 ── */
+@font-face {
+  font-family: "NotoSC";
+  src: url("{{ font_url }}") format("opentype");
+  font-weight: normal;
+  font-style:  normal;
+}
+* {
+  font-family: "NotoSC", "Helvetica Neue", Arial, sans-serif;
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+}
+
+/* ── 页面基础 ── */
+body {
+  background: #f4f6f9;
+  color: #1a1a2e;
+  font-size: 10.5pt;
+  line-height: 1.65;
+}
+
+/* ── 每页边距（WeasyPrint @page） ── */
+@page {
+  size: A4;
+  margin: 18mm 20mm 22mm 20mm;
+  @bottom-center {
+    content: "CONFIDENTIAL — DPP Expert Pre-Audit Report  |  Page " counter(page) " of " counter(pages);
+    font-family: "NotoSC", sans-serif;
+    font-size: 7.5pt;
+    color: #8a8fa8;
+  }
+}
+
+/* ── 分页控制：关键块不允许中途断页 ── */
+.summary-box,
+.kpi-card,
+.rec-list li,
+.legal-disclaimer,
+.brand-footer { page-break-inside: avoid; }
+
+/* 表格行不断页 */
+.findings-table tbody tr { page-break-inside: avoid; }
+
+/* ════════════════ 封面条 ════════════════ */
+.cover-bar {
+  background: {{ accent_dark }};
+  padding: 28px 32px 22px;
+  margin-bottom: 0;
+}
+.cover-bar .confidential {
+  font-size: 7pt;
+  letter-spacing: 2.5px;
+  color: rgba(255,255,255,0.65);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.cover-bar h1 {
+  font-size: 19pt;
+  font-weight: bold;
+  color: #ffffff;
+  line-height: 1.3;
+}
+.cover-bar .subtitle {
+  font-size: 9pt;
+  color: rgba(255,255,255,0.75);
+  margin-top: 6px;
+}
+
+/* ── 风险旗帜横幅 ── */
+.risk-banner {
+  background: {{ banner_bg }};
+  color: {{ banner_fg }};
+  padding: 11px 32px;
+  font-size: 10pt;
+  font-weight: bold;
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.risk-icon { font-size: 14pt; }
+
+/* ── 元数据行 ── */
+.meta-row {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e6f0;
+  padding: 10px 32px;
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.meta-item { font-size: 8pt; color: #5a6282; }
+.meta-item strong { color: #1a1a2e; display: block; font-size: 9pt; }
+
+/* ══ 正文区 ══ */
+.body-content { padding: 22px 32px; }
+
+/* ── 分区标题 ── */
+.section-title {
+  font-size: 11.5pt;
+  font-weight: bold;
+  color: {{ accent_dark }};
+  border-left: 4px solid {{ accent_color }};
+  padding-left: 10px;
+  margin: 22px 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* ── 摘要框 ── */
+.summary-box {
+  background: {{ summary_bg }};
+  border: 1.5px solid {{ accent_color }};
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 10.5pt;
+  color: {{ summary_fg }};
+  font-weight: bold;
+}
+
+/* ── 数据对比卡片组 ── */
+.kpi-grid {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.kpi-card {
+  flex: 1;
+  min-width: 140px;
+  background: #ffffff;
+  border: 1px solid #dde2f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.kpi-card .kpi-label {
+  font-size: 7.5pt;
+  color: #7a82a8;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 6px;
+}
+.kpi-card .kpi-value {
+  font-size: 20pt;
+  font-weight: bold;
+  color: {{ accent_dark }};
+  line-height: 1;
+}
+.kpi-card .kpi-unit {
+  font-size: 8pt;
+  color: #9aa0be;
+  margin-top: 3px;
+}
+.kpi-card .kpi-ref {
+  font-size: 7.5pt;
+  color: #b0b6cc;
+  margin-top: 8px;
+  border-top: 1px solid #eef0f8;
+  padding-top: 6px;
+}
+
+/* ── Findings 表格 ── */
+.findings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+  margin-bottom: 20px;
+}
+.findings-table thead tr {
+  background: {{ accent_dark }};
+  color: #ffffff;
+}
+.findings-table thead th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 8.5pt;
+  letter-spacing: 0.3px;
+}
+.findings-table tbody tr:nth-child(even) { background: #f8f9fd; }
+.findings-table tbody tr:nth-child(odd)  { background: #ffffff; }
+.findings-table tbody td {
+  padding: 9px 12px;
+  vertical-align: top;
+  border-bottom: 1px solid #eaedf5;
+}
+
+/* 风险等级徽章 */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 7.5pt;
+  font-weight: bold;
+  white-space: nowrap;
+}
+.badge-red    { background: #ffe0e0; color: #c0392b; }
+.badge-orange { background: #fff0d8; color: #c07000; }
+.badge-yellow { background: #fffad0; color: #8a7000; }
+.badge-green  { background: #e0f7ea; color: #1a7a40; }
+
+/* 法律引用（加粗高亮）*/
+.legal-ref {
+  font-weight: bold;
+  color: #2c3e7a;
+  font-size: 8pt;
+}
+
+/* ── 建议清单 ── */
+.rec-list { list-style: none; padding: 0; }
+.rec-list li {
+  background: #ffffff;
+  border: 1px solid #dde2f0;
+  border-left: 4px solid {{ accent_color }};
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 9.5pt;
+  color: #2a2d45;
+  /* 长建议文本自动换行，不溢出边界 */
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+.rec-number {
+  display: inline-block;
+  width: 20px; height: 20px;
+  line-height: 20px;
+  background: {{ accent_color }};
+  color: #fff;
+  border-radius: 50%;
+  font-size: 8pt;
+  font-weight: bold;
+  text-align: center;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ── Findings 表格文本保护 ── */
+.findings-table tbody td {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 0;   /* 触发 table-layout: fixed 的宽度约束 */
+}
+.findings-table {
+  table-layout: fixed;
+}
+
+/* ── 基准对比条 ── */
+.bench-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+  font-size: 9pt;
+}
+.bench-label { width: 120px; color: #5a6282; flex-shrink: 0; }
+.bench-bar-wrap {
+  flex: 1;
+  background: #eaecf6;
+  border-radius: 4px;
+  height: 10px;
+  position: relative;
+  overflow: visible;
+}
+.bench-bar-fill {
+  height: 10px;
+  border-radius: 4px;
+  background: {{ accent_color }};
+}
+.bench-bar-min-mark {
+  position: absolute;
+  top: -3px;
+  height: 16px;
+  width: 2px;
+  background: #e74c3c;
+}
+.bench-value { width: 70px; text-align: right; font-weight: bold; color: {{ accent_dark }}; }
+.bench-range { font-size: 7.5pt; color: #9aa0be; width: 90px; flex-shrink: 0; }
+
+/* ── 分区标题不孤立在页底 ── */
+.section-title { page-break-after: avoid; }
+
+/* ── 法规声明框 ── */
+.legal-disclaimer {
+  background: #f0f2fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 7.5pt;
+  color: #6a7298;
+  margin-top: 24px;
+  line-height: 1.7;
+}
+
+/* ── 页脚品牌行 ── */
+.brand-footer {
+  margin-top: 30px;
+  padding-top: 14px;
+  border-top: 2px solid {{ accent_color }};
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.brand-footer .brand-name {
+  font-size: 9pt;
+  font-weight: bold;
+  color: {{ accent_dark }};
+  letter-spacing: 0.5px;
+}
+.brand-footer .brand-sub {
+  font-size: 7.5pt;
+  color: #9aa0be;
+  margin-top: 2px;
+}
+.brand-footer .stamp {
+  font-size: 7.5pt;
+  color: #b0b6cc;
+  text-align: right;
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════ 封面条 ══════════ -->
+<div class="cover-bar">
+  <div class="confidential">&#128274; Confidential &nbsp;—&nbsp; Pre-Audit Report</div>
+  <h1>Battery Digital Product Passport<br>EU Compliance Pre-Audit Report<br>
+      <span style="font-size:13pt;font-weight:normal;">电池数字产品护照合规预审计报告</span>
+  </h1>
+  <div class="subtitle">
+    Regulation (EU) 2023/1542 &nbsp;|&nbsp; OJ L 191, 28.7.2023
+    &nbsp;|&nbsp; Prepared by DPP Expert AI Engine
+  </div>
+</div>
+
+<!-- ══════════ 风险横幅 ══════════ -->
+<div class="risk-banner">
+  <span class="risk-icon">{{ risk_icon }}</span>
+  <span>整体风险等级 Overall Risk Level：{{ risk_level_display }}</span>
+</div>
+
+<!-- ══════════ 元数据行 ══════════ -->
+<div class="meta-row">
+  <div class="meta-item">
+    <strong>报告编号 Report No.</strong>{{ report_id }}
+  </div>
+  <div class="meta-item">
+    <strong>生成时间 Generated</strong>{{ generated_at }}
+  </div>
+  <div class="meta-item">
+    <strong>电池类型 Battery Type</strong>{{ battery_type }}
+  </div>
+  <div class="meta-item">
+    <strong>审计引擎 Engine</strong>DPP Expert v2.1
+  </div>
+</div>
+
+<!-- ══════════ 正文 ══════════ -->
+<div class="body-content">
+
+  <!-- ══ CEO 决策看板 ══ -->
+  <div class="section-title">00 &nbsp; CEO Decision Dashboard &nbsp; 决策看板</div>
+  <div style="display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap;">
+
+    <!-- 合规星级 -->
+    <div style="flex:1;min-width:140px;background:#fff;border:1.5px solid {{ accent_color }};border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:7.5pt;color:#7a82a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">合规星级<br>Compliance Score</div>
+      <div style="font-size:28pt;line-height:1;">{{ compliance_stars }}</div>
+      <div style="font-size:8pt;color:{{ accent_dark }};font-weight:bold;margin-top:6px;">{{ compliance_grade }}</div>
+    </div>
+
+    <!-- 碳排缺口 -->
+    <div style="flex:1;min-width:140px;background:#fff;border:1.5px solid {{ accent_color }};border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:7.5pt;color:#7a82a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">碳排缺口<br>Carbon Gap</div>
+      <div style="font-size:22pt;font-weight:bold;color:{{ carbon_gap_color }};line-height:1;">{{ carbon_gap_display }}</div>
+      <div style="font-size:8pt;color:#9aa0be;margin-top:4px;">vs. 行业均值</div>
+    </div>
+
+    <!-- 造假风险 -->
+    <div style="flex:1;min-width:140px;background:{{ fraud_bg }};border:1.5px solid {{ fraud_border }};border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:7.5pt;color:#7a82a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">造假风险<br>Fraud Risk</div>
+      <div style="font-size:20pt;font-weight:bold;color:{{ fraud_color }};line-height:1;">{{ fraud_level }}</div>
+      <div style="font-size:8pt;color:{{ fraud_color }};margin-top:4px;">{{ red_flag_count }} RED_FLAG(s)</div>
+    </div>
+
+    <!-- 生存预测 -->
+    <div style="flex:1;min-width:140px;background:#fff;border:1.5px solid #dde2f0;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:7.5pt;color:#7a82a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">生存预测<br>Survival Forecast</div>
+      <div style="font-size:20pt;font-weight:bold;color:{{ survival_color }};line-height:1;">{{ survival_display }}</div>
+      <div style="font-size:8pt;color:#9aa0be;margin-top:4px;">欧盟清票风险年</div>
+    </div>
+
+  </div><!-- /CEO Dashboard -->
+
+  <!-- ══ 供应链穿透图 ══ -->
+  <div class="section-title">01 &nbsp; Supply Chain Map &nbsp; 供应链穿透图</div>
+  <div style="background:#fff;border:1px solid #dde2f0;border-radius:8px;padding:16px 18px;margin-bottom:22px;">
+    <div style="font-size:8pt;color:#7a82a8;margin-bottom:12px;">
+      颜色说明：<span style="color:#27AE60;font-weight:bold;">■ 已审计</span> &nbsp;
+      <span style="color:#E67E22;font-weight:bold;">■ 部分已知</span> &nbsp;
+      <span style="color:#E74C3C;font-weight:bold;">■ 黑盒（未审计数据）</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:nowrap;overflow-x:auto;">
+
+      {% for node in supply_chain_nodes %}
+      <div style="text-align:center;flex-shrink:0;">
+        <div style="background:{{ node.color }};color:#fff;border-radius:6px;padding:8px 10px;font-size:8pt;font-weight:bold;white-space:nowrap;min-width:70px;">
+          {{ node.icon }}<br>{{ node.label }}
+        </div>
+        <div style="font-size:7pt;color:{{ node.color }};margin-top:3px;">{{ node.status }}</div>
+      </div>
+      {% if not loop.last %}
+      <div style="color:#b0b6cc;font-size:16pt;padding:0 4px;flex-shrink:0;">→</div>
+      {% endif %}
+      {% endfor %}
+
+    </div>
+  </div>
+
+  <!-- 2. 审计结论摘要 -->
+  <div class="section-title">02 &nbsp; Audit Verdict &nbsp; 审计结论</div>
+  <div class="summary-box">{{ summary }}</div>
+
+  <!-- 3. 关键指标卡片 -->
+  <div class="section-title">03 &nbsp; Key Metrics vs. Industry Benchmark &nbsp; 关键指标对比</div>
+  <div class="kpi-grid">
+
+    <div class="kpi-card">
+      <div class="kpi-label">制造能耗 Energy Usage</div>
+      <div class="kpi-value" style="color:{{ energy_color }}">
+        {{ energy_display }}
+      </div>
+      <div class="kpi-unit">kWh / kWh</div>
+      <div class="kpi-ref">
+        行业合理范围：{{ energy_range }}<br>
+        行业均值：{{ energy_avg }} kWh/kWh
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">回收材料比例 Recycled Rate</div>
+      <div class="kpi-value" style="color:{{ recycled_color }}">
+        {{ recycled_display }}
+      </div>
+      <div class="kpi-unit">%</div>
+      <div class="kpi-ref">
+        法定最低值 (2031)：≥ 6%<br>
+        2024 年行业均值：≈ 3.2%
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">合规发现项 Findings</div>
+      <div class="kpi-value">{{ total_findings }}</div>
+      <div class="kpi-unit">items</div>
+      <div class="kpi-ref">
+        RED_FLAG {{ count_red }} &nbsp;|&nbsp;
+        COMPLIANCE_GAP {{ count_gap }}<br>
+        WARNING {{ count_warn }} &nbsp;|&nbsp;
+        PASS {{ count_pass }}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 基准对比可视化条 -->
+  {% if energy_value is not none %}
+  <div style="background:#fff;border:1px solid #dde2f0;border-radius:8px;padding:16px 18px;margin-bottom:20px;">
+    <div style="font-size:8.5pt;color:#7a82a8;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">
+      能耗基准对比 Energy Usage vs. Benchmark Range
+    </div>
+    <div class="bench-row">
+      <div class="bench-label">申报值 Declared</div>
+      <div class="bench-bar-wrap">
+        <div class="bench-bar-fill" style="width:{{ energy_bar_pct }}%;"></div>
+        <div class="bench-bar-min-mark" style="left:{{ energy_min_mark_pct }}%;"></div>
+      </div>
+      <div class="bench-value">{{ energy_value }} kWh/kWh</div>
+      <div class="bench-range">范围 {{ energy_range }}</div>
+    </div>
+    <div style="font-size:7.5pt;color:#b0b6cc;margin-top:4px;">
+      ▌ 红线标记 = 行业公认最小值 &nbsp;|&nbsp; 灰色底条 = 正常区间 (0–{{ energy_bar_max }})
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 4. 详细核查结果 -->
+  <div class="section-title">04 &nbsp; Detailed Findings &nbsp; 详细核查结果</div>
+  <table class="findings-table">
+    <thead>
+      <tr>
+        <th style="width:14%">风险等级<br>Level</th>
+        <th style="width:16%">字段<br>Field</th>
+        <th style="width:40%">问题描述<br>Finding</th>
+        <th style="width:30%">法规依据<br>Legal Reference</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for f in findings %}
+      <tr>
+        <td>
+          {% if f.level == "RED_FLAG" %}
+            <span class="badge badge-red">&#9888; RED_FLAG</span>
+          {% elif f.level == "COMPLIANCE_GAP" %}
+            <span class="badge badge-orange">&#9679; COMPLIANCE_GAP</span>
+          {% elif f.level == "WARNING" %}
+            <span class="badge badge-yellow">&#9651; WARNING</span>
+          {% else %}
+            <span class="badge badge-green">&#10003; PASS</span>
+          {% endif %}
+        </td>
+        <td style="font-family:monospace;font-size:8.5pt;word-break:break-all;">{{ f.field }}</td>
+        <td>{{ f.message }}</td>
+        <td><span class="legal-ref">{{ f.legal_ref }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- 5. 改进建议（含三条成本优化路径）-->
+  {% if recommendations %}
+  <div class="section-title">05 &nbsp; Gap Fixing List &amp; Cost Optimization &nbsp; 整改与成本优化建议</div>
+  <ul class="rec-list">
+    {% for i, rec in recommendations %}
+    <li>
+      <span class="rec-number">{{ i }}</span>
+      {{ rec }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- 6. 合规生命周期预测 -->
+  {% if lifecycle_events %}
+  <div class="section-title">06 &nbsp; Compliance Survival Forecast &nbsp; 合规生存预测</div>
+  <div style="background:#fff;border:1px solid #dde2f0;border-radius:8px;padding:16px 18px;margin-bottom:20px;">
+    <div style="font-size:8.5pt;color:#5a6282;margin-bottom:12px;font-weight:bold;">
+      {{ lifecycle_verdict }}
+    </div>
+    {% for evt in lifecycle_events %}
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;">
+      <div style="width:60px;font-size:8pt;color:#7a82a8;flex-shrink:0;text-align:center;">
+        <div style="font-weight:bold;color:{{ accent_dark }};">{{ evt.year }}</div>
+        <div>Q{{ evt.month }}</div>
+      </div>
+      <div style="width:10px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;">
+        <div style="width:10px;height:10px;border-radius:50%;background:{% if evt.status == 'FAIL' %}#E74C3C{% else %}#27AE60{% endif %};margin-top:2px;"></div>
+        <div style="width:2px;flex:1;background:#e0e4f0;margin-top:2px;"></div>
+      </div>
+      <div style="flex:1;font-size:9pt;">
+        <span style="font-weight:bold;color:{% if evt.status == 'FAIL' %}#C0392B{% else %}#1A5C38{% endif %};">
+          {% if evt.status == 'FAIL' %}⚠ {% else %}✓ {% endif %}{{ evt.event }}
+        </span>
+        {% if evt.gap_reason %}<span style="color:#E74C3C;font-size:8.5pt;"> — {{ evt.gap_reason }}</span>{% endif %}
+        <div style="font-size:7.5pt;color:#8a90b0;margin-top:2px;">{{ evt.legal_ref }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 7. 法规声明 -->
+  <div class="section-title">07 &nbsp; Legal Notice &nbsp; 法律声明</div>
+  <div class="legal-disclaimer">
+    <strong>Regulation (EU) 2023/1542</strong> of the European Parliament and of the Council of 12 July 2023
+    concerning batteries and waste batteries, amending Directive 2008/98/EC and Regulation (EU) 2019/1020
+    and repealing Directive 2006/66/EC. Published in the Official Journal of the European Union, L 191, 28 July 2023.<br><br>
+    本报告依据 <strong>Article 7</strong>（碳足迹申报）、<strong>Article 8</strong>（回收材料比例要求）、
+    <strong>Article 77</strong>（数字产品护照义务，自 2027-02-18 起生效）及
+    <strong>Annex XIII</strong>（护照数据要求）生成，仅供合规预审计参考。
+    本报告不构成正式法律意见，最终合规判定以主管机构的认证结论为准。<br><br>
+    <strong>数据准确性义务：</strong>Art. 77(4) — The economic operator placing the battery on the market
+    shall ensure that the information in the battery passport is accurate, complete and up to date.
+  </div>
+
+  <!-- 品牌页脚 -->
+  <div class="brand-footer">
+    <div>
+      <div class="brand-name">DPP Expert &nbsp;|&nbsp; AI Compliance Engine</div>
+      <div class="brand-sub">Verified for Regulation (EU) 2023/1542 Standards</div>
+    </div>
+    <div class="stamp">
+      Generated: {{ generated_at }}<br>
+      Report ID: {{ report_id }}<br>
+      CONFIDENTIAL — FOR AUTHORIZED USE ONLY
+    </div>
+  </div>
+
+</div><!-- /body-content -->
+</body>
+</html>

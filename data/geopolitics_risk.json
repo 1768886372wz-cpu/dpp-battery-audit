@@ -1,0 +1,152 @@
+{
+  "_metadata": {
+    "title": "电池供应链地缘政治与人权风险数据库",
+    "purpose": "支撑 auditor.py 的供应链区域风险核查（维度 3）和地缘风险引擎（Wave 3）",
+    "last_updated": "2026-03-24",
+    "sources": [
+      "OECD – 'Interconnected supply chains: DRC Cobalt and Copper Due Diligence' (2019, updated 2024)",
+      "Fair Cobalt Alliance – Child Labour Remediation Report (2024)",
+      "EU Forced Labour Regulation (adopted 2024-11-19)",
+      "Caixin Global – 'EU Carbon Rules Sap Chinese Battery Giants' (2024-11-29)",
+      "Minespider – 'EU Battery Due Diligence Postponed' (2025)",
+      "EU Trade Policy – Graphite Anti-Dumping Extension (2025-06-20)",
+      "Regulation (EU) 2023/1542, Article 52 – Due Diligence"
+    ],
+    "risk_levels": {
+      "CRITICAL": "立即阻止市场准入，无补救方案即违规",
+      "HIGH":     "需要 OECD/RMI 第三方审计证明，否则触发市场准入高风险预警",
+      "MEDIUM":   "需要申报尽职调查政策，定期审查",
+      "LOW":      "无已知系统性风险，仍需常规供应商管理"
+    }
+  },
+
+  "high_risk_regions": {
+    "DRC_Congo": {
+      "full_name": "刚果民主共和国（Democratic Republic of the Congo）",
+      "risk_level": "CRITICAL",
+      "primary_material": ["cobalt", "copper"],
+      "risk_factors": [
+        "手工采矿（ASM）占钴产量约 15-20%，工业矿与 ASM 供应链在精炼环节高度混合",
+        "童工问题：2017 年伯克利大学调查显示，钴矿社区约 23% 的儿童在矿山附近工作或生活",
+        "武装团体控制部分矿区，存在与军方关联的腐败和人权侵犯风险",
+        "OECD 指出工业矿与 ASM 并非截然分离，供应链追溯极其困难"
+      ],
+      "eu_regulation_trigger": "Article 52, Regulation (EU) 2023/1542 — 钴/铜尽职调查义务",
+      "required_certification": ["OECD Due Diligence Guidance for Responsible Mineral Supply Chains", "RMI (Responsible Minerals Initiative) RMAP Audit", "IRMA (Initiative for Responsible Mining Assurance)"],
+      "market_access_risk": "无 OECD 标准第三方审计证明 → 市场准入高风险预警",
+      "oecd_guidance_url": "https://mneguidelines.oecd.org/due-diligence-guidance-for-responsible-supply-chains-of-minerals.htm",
+      "_verbatim_oecd": "industrial and artisanal mining operations are often interconnected rather than entirely distinct, creating complex supply chain risks"
+    },
+
+    "Xinjiang_China": {
+      "full_name": "中国新疆维吾尔自治区",
+      "risk_level": "CRITICAL",
+      "primary_material": ["polysilicon", "lithium", "natural_graphite"],
+      "risk_factors": [
+        "EU Forced Labour Regulation（2024-11-19 通过）将约 2027-2028 年执法，禁止强迫劳动产品进入欧盟市场",
+        "美国《维吾尔强迫劳动预防法》（UFLPA）已建立推定规则，新疆商品进入美国市场须举证非强迫劳动产品",
+        "新疆生产建设兵团（XPCC）受美国制裁，涉及多晶硅、棉花等产品",
+        "供应链透明度极低，第三方审计机构准入受限"
+      ],
+      "eu_regulation_trigger": "EU Forced Labour Regulation 2024; Article 52, Regulation (EU) 2023/1542",
+      "required_certification": ["独立第三方审计（需审计机构可自由进入新疆，目前极难实现）", "供应商层级溯源（Tier 1→N）", "替代来源证明"],
+      "market_access_risk": "高风险：欧盟执法后将面临进口禁止，美国已实质性封堵",
+      "grid_carbon_intensity_g_co2_per_kwh": 750,
+      "additional_risk": "新疆电网碳强度全国最高（约 750 gCO2/kWh），双重风险",
+      "_note": "建议企业在 2031 年前完成供应链从新疆的替代转移"
+    },
+
+    "Myanmar_Burma": {
+      "full_name": "缅甸（Myanmar / Burma）",
+      "risk_level": "HIGH",
+      "primary_material": ["rare_earth", "tin", "tungsten"],
+      "risk_factors": [
+        "2021 年军事政变后，军政府控制关键矿产收入",
+        "OECD 建议企业暂停缅甸关键矿产采购，直至政治局势改善",
+        "稀土（尤其是钕/镝）是 EV 电机磁铁的关键原料，缅甸是中国稀土的重要来源地之一"
+      ],
+      "eu_regulation_trigger": "EU Forced Labour Regulation 2024; OECD Due Diligence",
+      "required_certification": ["OECD Due Diligence 特别建议：暂停采购"],
+      "market_access_risk": "高：建议替代来源，欧盟采购合规要求日趋严格"
+    },
+
+    "Artisanal_Mining_Zones": {
+      "full_name": "全球手工采矿区（非特指地区）",
+      "risk_level": "MEDIUM",
+      "primary_material": ["cobalt", "tin", "tungsten", "gold"],
+      "risk_factors": [
+        "手工采矿（ASM）安全标准不达标，童工普遍",
+        "供应链混入正规工业矿产品，极难溯源",
+        "OECD 建议对 ASM 来源实施特别尽职调查"
+      ],
+      "required_certification": ["OECD 3TG 审计框架", "RMI RMAP"]
+    }
+  },
+
+  "critical_minerals_risk_matrix": {
+    "cobalt": {
+      "primary_source_country": "DRC（约 70% 全球供应）",
+      "risk_level": "CRITICAL",
+      "eu_dd_deadline": "2027-08-18",
+      "legal_ref": "Article 52(1)(a), Regulation (EU) 2023/1542",
+      "alternative_sources": ["菲律宾", "澳大利亚", "古巴", "加拿大"],
+      "recycled_content_target_2031": "16%",
+      "market_trend": "LFP 电池无钴，可规避风险；NCM 高镍化趋势也在降低钴用量"
+    },
+    "lithium": {
+      "primary_source_country": "澳大利亚（矿石）、智利/阿根廷（卤水）",
+      "risk_level": "MEDIUM",
+      "eu_dd_deadline": "2027-08-18",
+      "legal_ref": "Article 52(1)(c), Regulation (EU) 2023/1542",
+      "alternative_sources": ["澳大利亚", "智利", "阿根廷", "葡萄牙（欧洲）"],
+      "recycled_content_target_2031": "6%",
+      "china_xinjiang_risk": "新疆盐湖锂资源开发受强迫劳动风险关注"
+    },
+    "nickel": {
+      "primary_source_country": "印度尼西亚（约 45% 全球供应）",
+      "risk_level": "MEDIUM",
+      "eu_dd_deadline": "2027-08-18",
+      "legal_ref": "Article 52(1)(b), Regulation (EU) 2023/1542",
+      "alternative_sources": ["菲律宾", "俄罗斯（受制裁风险）", "加拿大", "澳大利亚"],
+      "recycled_content_target_2031": "6%",
+      "environmental_risk": "印尼镍矿湿法冶炼严重依赖煤电（电网碳强度约 740 gCO2/kWh），碳足迹极高"
+    },
+    "natural_graphite": {
+      "primary_source_country": "中国（约 65% 全球供应）",
+      "risk_level": "HIGH",
+      "eu_dd_deadline": "2027-08-18",
+      "trade_measure": "EU 2025-06-20 延伸反倾销税至人造石墨（74.9% 税率），天然石墨暂免",
+      "eu_regulation_trigger": "Article 52, Regulation (EU) 2023/1542",
+      "alternative_sources": ["莫桑比克", "马达加斯加", "加拿大", "挪威（人造石墨）"],
+      "note": "中国新疆天然石墨开采面临强迫劳动风险审查"
+    }
+  },
+
+  "due_diligence_certification_hierarchy": {
+    "_description": "认证级别由高到低，核查引擎优先接受更高级别证明",
+    "level_1_gold": {
+      "name": "OECD Due Diligence Guidance — 完整实施",
+      "description": "每年报告，第三方独立核实，覆盖 Tier 1→N 供应商",
+      "audit_outcome": "PASS（最高信任级别）"
+    },
+    "level_2_silver": {
+      "name": "RMI RMAP (Responsible Minerals Assurance Process)",
+      "description": "精炼厂/冶炼厂层面合规证明",
+      "audit_outcome": "PASS（可信）"
+    },
+    "level_3_bronze": {
+      "name": "IRMA Site Certification",
+      "description": "矿山层面独立审计认证",
+      "audit_outcome": "PASS（可信）"
+    },
+    "level_4_policy_only": {
+      "name": "内部尽职调查政策（未经第三方核实）",
+      "description": "企业自述政策文件",
+      "audit_outcome": "WARNING（需升级至第三方核实）"
+    },
+    "level_5_none": {
+      "name": "无任何文件",
+      "audit_outcome": "FAIL — 市场准入高风险预警"
+    }
+  }
+}

@@ -1,0 +1,237 @@
+{
+  "_metadata": {
+    "title": "Battery Production Energy & Carbon Benchmarks",
+    "description": "Reference benchmarks for EU 2023/1542 DPP pre-audit plausibility checks. Values are derived from publicly available scientific literature and EU JRC Technical Reports.",
+    "sources": [
+      "JRC Technical Reports on Carbon Footprint of EV Batteries (2020, 2023)",
+      "Lifecycle Assessment of Lithium-Ion Batteries — Romare & Dahllöf, IVL Swedish Environmental Research Institute (2017)",
+      "Global Battery Alliance — Battery Passport Content Guidance v1.2 (2022)",
+      "BNEF Electric Vehicle Battery Price Survey (2022–2024)",
+      "IEA Global EV Outlook (2023)",
+      "Nature Energy: 'A better future for lithium-ion batteries' (2021)",
+      "OECD Due Diligence Guidance for Responsible Supply Chains of Minerals (3rd Ed.)"
+    ],
+    "last_updated": "2026-03-19",
+    "regulation": "EU 2023/1542",
+    "disclaimer": "These benchmarks are indicative ranges for pre-audit plausibility checks only. They do not constitute legal thresholds under EU 2023/1542 unless explicitly stated."
+  },
+
+  "carbon_footprint_benchmarks": {
+    "_description": "Lifecycle carbon footprint ranges in kg CO2e per kWh of battery capacity. Mandatory declaration under Article 7 + Annex XIII(1)(c). Values below the 'floor' trigger DATA_UNREALISTIC flag.",
+    "NMC": {
+      "chemistry_full_name": "Lithium Nickel Manganese Cobalt Oxide",
+      "typical_range_kg_co2e_per_kwh": { "min": 65, "max": 130 },
+      "physical_floor_kg_co2e_per_kwh": 40,
+      "best_practice_target_kg_co2e_per_kwh": 60,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 96,
+      "notes": "High Ni NMC (NMC 811) tends toward lower end; NMC 111 toward upper end. Floor accounts for minimum theoretical energy of mining, processing and cell assembly."
+    },
+    "NMC_811": {
+      "chemistry_full_name": "Lithium Nickel Manganese Cobalt Oxide (80-10-10)",
+      "typical_range_kg_co2e_per_kwh": { "min": 60, "max": 110 },
+      "physical_floor_kg_co2e_per_kwh": 42,
+      "best_practice_target_kg_co2e_per_kwh": 58,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 85,
+      "notes": "Lower Co content reduces mining emissions; Ni processing remains significant."
+    },
+    "LFP": {
+      "chemistry_full_name": "Lithium Iron Phosphate",
+      "typical_range_kg_co2e_per_kwh": { "min": 45, "max": 90 },
+      "physical_floor_kg_co2e_per_kwh": 30,
+      "best_practice_target_kg_co2e_per_kwh": 45,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 68,
+      "notes": "No Co or Ni; lower critical-mineral extraction burden. Higher cell-level energy use due to lower energy density."
+    },
+    "NCA": {
+      "chemistry_full_name": "Lithium Nickel Cobalt Aluminum Oxide",
+      "typical_range_kg_co2e_per_kwh": { "min": 70, "max": 125 },
+      "physical_floor_kg_co2e_per_kwh": 45,
+      "best_practice_target_kg_co2e_per_kwh": 65,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 95,
+      "notes": "Similar to NMC 811; Al processing adds minor burden."
+    },
+    "LTO": {
+      "chemistry_full_name": "Lithium Titanate Oxide",
+      "typical_range_kg_co2e_per_kwh": { "min": 100, "max": 180 },
+      "physical_floor_kg_co2e_per_kwh": 60,
+      "best_practice_target_kg_co2e_per_kwh": 100,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 140,
+      "notes": "Very low energy density leads to high footprint per kWh; compensated by extreme cycle life."
+    },
+    "LMFP": {
+      "chemistry_full_name": "Lithium Manganese Iron Phosphate",
+      "typical_range_kg_co2e_per_kwh": { "min": 50, "max": 95 },
+      "physical_floor_kg_co2e_per_kwh": 33,
+      "best_practice_target_kg_co2e_per_kwh": 50,
+      "eu_benchmark_2024_kg_co2e_per_kwh": 72,
+      "notes": "Next-generation cathode; slightly higher energy density than LFP."
+    },
+    "SOLID_STATE": {
+      "chemistry_full_name": "Solid-State Battery (various anodes)",
+      "typical_range_kg_co2e_per_kwh": { "min": 55, "max": 100 },
+      "physical_floor_kg_co2e_per_kwh": 35,
+      "best_practice_target_kg_co2e_per_kwh": 50,
+      "eu_benchmark_2024_kg_co2e_per_kwh": null,
+      "notes": "Pre-commercial; benchmarks highly uncertain. Floor estimated from lab-scale LCA studies."
+    }
+  },
+
+  "recycled_content_thresholds": {
+    "_description": "Minimum recycled content shares mandated by Article 8(2)(a)-(d). NON_COMPLIANT if any metal is below the applicable year target.",
+    "_legal_basis": "Regulation (EU) 2023/1542, Article 8(2)",
+    "targets_by_year": {
+      "2027": {
+        "effective_date": "2027-08-18",
+        "lithium_pct":  6,
+        "cobalt_pct":  16,
+        "nickel_pct":   6,
+        "lead_pct":    85
+      },
+      "2031": {
+        "effective_date": "2031-08-18",
+        "lithium_pct": 12,
+        "cobalt_pct":  26,
+        "nickel_pct":  15,
+        "lead_pct":    85
+      }
+    },
+    "current_industry_averages_2024_pct": {
+      "lithium": 3.2,
+      "cobalt":  12.5,
+      "nickel":   4.8,
+      "lead":    88.0,
+      "notes": "Industry averages sourced from Global Battery Alliance Transparency Report 2024 and JRC estimates."
+    }
+  },
+
+  "production_energy_benchmarks": {
+    "_description": "Manufacturing energy intensity benchmarks (kWh electricity per kWh battery capacity).",
+    "_sources": ["IVL Swedish Environmental Research Institute (2017, 2019)", "Argonne National Laboratory GREET Model", "BNEF Battery Factory Tracker 2023"],
+    "cell_manufacturing_kwh_per_kwh_capacity": {
+      "world_average_2020": 150,
+      "world_average_2023": 60,
+      "best_in_class_2023": 35,
+      "chinese_gigafactory_avg_2023": 55,
+      "european_gigafactory_avg_2023": 75,
+      "notes": "Dramatic improvement driven by process optimization and 100% renewable energy pledges by major OEMs."
+    },
+    "pack_assembly_kwh_per_kwh_capacity": {
+      "typical": 8,
+      "best_practice": 4
+    },
+    "cathode_active_material_energy_mj_per_kg": {
+      "NMC_111": 270,
+      "NMC_811": 210,
+      "LFP":     155,
+      "NCA":     250,
+      "notes": "Includes calcination and synthesis energy. Based on Ecoinvent v3.9 processes."
+    }
+  },
+
+  "mining_zones": {
+    "_description": "Approximate bounding boxes for major Li/Co mining regions used in coordinate anti-fraud checks.",
+    "_legal_context": "OECD Due Diligence Guidance for Responsible Supply Chains of Minerals (3rd Ed.)",
+    "zones": [
+      {
+        "name": "Chile / Argentina Lithium Triangle",
+        "country_codes": ["CL", "AR", "BO"],
+        "primary_mineral": "Lithium",
+        "lat_min": -30.0, "lat_max": -15.0,
+        "lon_min": -72.0, "lon_max": -65.0,
+        "major_producers": ["SQM", "Albemarle", "Livent", "Allkem"],
+        "oecd_risk_category": "medium",
+        "notes": "Salar-based brine extraction. Water-use controversy ongoing."
+      },
+      {
+        "name": "Democratic Republic of Congo — Cobalt Belt",
+        "country_codes": ["CD"],
+        "primary_mineral": "Cobalt",
+        "lat_min": -15.0, "lat_max":  5.0,
+        "lon_min":  12.0, "lon_max": 33.0,
+        "major_producers": ["Glencore", "CMOC", "Ivanhoe Mines"],
+        "oecd_risk_category": "high",
+        "notes": "~70% of global Co production. OECD flags for human rights and artisanal mining (ASM) risks."
+      },
+      {
+        "name": "Western Australia — Lithium & Nickel",
+        "country_codes": ["AU"],
+        "primary_mineral": "Lithium",
+        "lat_min": -33.0, "lat_max": -20.0,
+        "lon_min": 114.0, "lon_max": 122.0,
+        "major_producers": ["Pilbara Minerals", "Mineral Resources", "IGO"],
+        "oecd_risk_category": "low",
+        "notes": "Spodumene hard-rock mining. Australia has strong ESG governance frameworks."
+      },
+      {
+        "name": "Southern Africa — Lithium Belt",
+        "country_codes": ["ZW", "ZM", "NA"],
+        "primary_mineral": "Lithium",
+        "lat_min": -25.0, "lat_max": -18.0,
+        "lon_min":  16.0, "lon_max":  30.0,
+        "major_producers": ["Prospect Resources", "Sigma Lithium"],
+        "oecd_risk_category": "medium",
+        "notes": "Emerging producers; governance quality varies by country."
+      },
+      {
+        "name": "Indonesia — Nickel Belt (Sulawesi)",
+        "country_codes": ["ID"],
+        "primary_mineral": "Nickel",
+        "lat_min":  -5.0, "lat_max":  2.0,
+        "lon_min": 120.0, "lon_max": 125.0,
+        "major_producers": ["Vale Indonesia", "PT Antam", "Tsingshan"],
+        "oecd_risk_category": "medium",
+        "notes": "Largest global Ni reserves; HPAL processing dominates. Deforestation concerns."
+      },
+      {
+        "name": "Philippines — Nickel",
+        "country_codes": ["PH"],
+        "primary_mineral": "Nickel",
+        "lat_min":  8.0, "lat_max": 18.0,
+        "lon_min": 117.0,"lon_max": 127.0,
+        "major_producers": ["Nickel Asia Corp", "Global Ferronickel"],
+        "oecd_risk_category": "medium",
+        "notes": "Predominantly laterite ore; exported as NPI to China."
+      }
+    ]
+  },
+
+  "battery_performance_benchmarks": {
+    "_description": "Typical performance parameter ranges used for data quality checks.",
+    "EV": {
+      "rated_capacity_ah":                   { "typical_min": 50,   "typical_max": 300  },
+      "nominal_voltage_v":                   { "typical_min": 300,  "typical_max": 800  },
+      "expected_lifetime_cycles":            { "typical_min": 1000, "typical_max": 3000 },
+      "charge_discharge_efficiency_percent": { "typical_min": 92,   "typical_max": 98   },
+      "self_discharge_rate_pct_per_month":   { "typical_min": 0.5,  "typical_max": 3.0  }
+    },
+    "LMT": {
+      "rated_capacity_ah":                   { "typical_min": 5,    "typical_max": 80   },
+      "nominal_voltage_v":                   { "typical_min": 24,   "typical_max": 72   },
+      "expected_lifetime_cycles":            { "typical_min": 500,  "typical_max": 2000 },
+      "charge_discharge_efficiency_percent": { "typical_min": 88,   "typical_max": 97   },
+      "self_discharge_rate_pct_per_month":   { "typical_min": 1.0,  "typical_max": 5.0  }
+    },
+    "INDUSTRIAL": {
+      "rated_capacity_ah":                   { "typical_min": 50,   "typical_max": 2000 },
+      "nominal_voltage_v":                   { "typical_min": 48,   "typical_max": 1000 },
+      "expected_lifetime_cycles":            { "typical_min": 2000, "typical_max": 8000 },
+      "charge_discharge_efficiency_percent": { "typical_min": 90,   "typical_max": 99   },
+      "self_discharge_rate_pct_per_month":   { "typical_min": 0.2,  "typical_max": 2.0  }
+    }
+  },
+
+  "bom_cost_benchmarks_usd_per_kwh": {
+    "_description": "Battery pack cost benchmarks (USD/kWh) for market plausibility checks. Source: BNEF EV Battery Price Survey.",
+    "2022_world_avg":   152,
+    "2023_world_avg":   139,
+    "2024_world_avg":   115,
+    "2025_forecast":     94,
+    "2030_forecast":     60,
+    "chemistry_premium_over_LFP_pct": {
+      "NMC_811": 8,
+      "NMC_622": 5,
+      "NCA":     7,
+      "LTO":    60
+    }
+  }
+}

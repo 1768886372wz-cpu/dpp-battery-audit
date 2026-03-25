@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<!--
+  app/templates/report_base.html
+  Jinja2 base template for HTML-to-PDF report rendering (WeasyPrint path).
+  Used when the WeasyPrint backend is selected instead of fpdf2.
+-->
+<html lang="{{ language | default('zh') }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title | default('DPP Audit Report') }}</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Noto Sans SC", "Noto Sans", sans-serif;
+      font-size: 10pt;
+      color: #1a1a2e;
+      background: #fff;
+      line-height: 1.55;
+    }
+
+    /* ── Page layout (WeasyPrint) ── */
+    @page {
+      size: A4;
+      margin: 18mm 20mm 22mm 20mm;
+      @bottom-center {
+        content: "CONFIDENTIAL PRE-AUDIT REPORT — DPP INSIGHT  |  Page " counter(page) " of " counter(pages);
+        font-size: 7.5pt;
+        color: #999;
+      }
+    }
+
+    /* ── Cover ── */
+    .cover {
+      text-align: center;
+      padding-top: 60mm;
+      page-break-after: always;
+    }
+    .cover h1 {
+      font-size: 22pt;
+      color: #0b3d91;
+      font-weight: 800;
+      margin-bottom: 0.4em;
+    }
+    .cover .subtitle {
+      font-size: 11pt;
+      color: #555;
+      margin-bottom: 2em;
+    }
+    .cover .grade-badge {
+      display: inline-block;
+      font-size: 40pt;
+      font-weight: 900;
+      padding: 0.15em 0.5em;
+      border-radius: 12px;
+      margin: 0.5em auto;
+    }
+    .grade-A { color: #1b5e20; border: 4px solid #1b5e20; }
+    .grade-B { color: #e65100; border: 4px solid #e65100; }
+    .grade-C { color: #b71c1c; border: 4px solid #b71c1c; }
+
+    .cover .meta-table {
+      margin: 2em auto;
+      width: 60%;
+      border-collapse: collapse;
+      font-size: 10pt;
+    }
+    .cover .meta-table td {
+      padding: 5px 10px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .cover .meta-table td:first-child { font-weight: 700; color: #0b3d91; text-align: right; }
+
+    /* ── Section headers ── */
+    .section-title {
+      font-size: 14pt;
+      font-weight: 700;
+      color: #0b3d91;
+      border-left: 5px solid #0b3d91;
+      padding-left: 0.6em;
+      margin: 1.4em 0 0.6em;
+    }
+
+    /* ── Results table ── */
+    table.results {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+      margin-bottom: 1.2em;
+    }
+    table.results thead tr {
+      background: #0b3d91;
+      color: #fff;
+    }
+    table.results thead th {
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: 700;
+    }
+    table.results tbody tr:nth-child(even) { background: #f3f4f6; }
+    table.results tbody td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #e0e0e0;
+      vertical-align: top;
+    }
+    .status-compliant     { color: #1b5e20; font-weight: 700; }
+    .status-noncompliant  { color: #b71c1c; font-weight: 700; }
+    .status-notreq        { color: #555; }
+
+    /* ── Risk level colours ── */
+    .risk-low    { color: #1b5e20; }
+    .risk-medium { color: #e65100; }
+    .risk-high   { color: #b71c1c; font-weight: 700; }
+
+    /* ── Gap list ── */
+    .gap-item {
+      border-left: 3px solid #0b3d91;
+      padding: 4px 10px;
+      margin-bottom: 6px;
+      font-size: 9pt;
+    }
+    .gap-dept { font-weight: 700; color: #0b3d91; }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 7.5pt;
+      color: #777;
+      margin-top: 1.5em;
+    }
+
+    /* ── Watermark ── */
+    .watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-32deg);
+      font-size: 28pt;
+      color: rgba(0, 0, 0, 0.06);
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="watermark">CONFIDENTIAL PRE-AUDIT REPORT — BY DPP INSIGHT</div>
+
+  <!-- COVER PAGE -->
+  <div class="cover">
+    <h1>{{ title }}</h1>
+    <p class="subtitle">{{ subtitle }}</p>
+
+    <div class="grade-badge grade-{{ grade }}">{{ grade }}</div>
+    <p style="font-size:11pt;color:#555;margin-top:0.3em;">{{ labels.grade }}</p>
+
+    <table class="meta-table">
+      {% if client_name %}
+      <tr><td>{{ labels.client }}</td><td>{{ client_name }}</td></tr>
+      {% endif %}
+      {% if project_code %}
+      <tr><td>{{ labels.proj }}</td><td>{{ project_code }}</td></tr>
+      {% endif %}
+      {% if report_no %}
+      <tr><td>{{ labels.rptno }}</td><td>{{ report_no }}</td></tr>
+      {% endif %}
+      <tr><td>{{ labels.time }}</td><td>{{ audit_time }}</td></tr>
+    </table>
+
+    <p style="font-size:8.5pt;color:#888;margin-top:2em;">{{ labels.scope }}</p>
+  </div>
+
+  <!-- RESULTS TABLE -->
+  <div class="section-title">{{ labels.summary }}</div>
+  <table class="results">
+    <thead>
+      <tr>
+        <th style="width:18%">{{ labels.model }}</th>
+        <th style="width:22%">{{ labels.status }}</th>
+        <th style="width:10%">{{ labels.risk }}</th>
+        <th>{{ labels.issues }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td>{{ r.model }}</td>
+        <td class="status-{% if r.status == 'COMPLIANT' %}compliant{% elif r.status == 'NON_COMPLIANT' %}noncompliant{% else %}notreq{% endif %}">
+          {{ r.status }}
+        </td>
+        <td class="risk-{{ r.risk_level }}">{{ r.risk_level | upper }}</td>
+        <td>
+          {% set items = r.missing_fields if r.missing_fields else r.issues %}
+          {% for item in items[:6] %}• {{ item }}<br/>{% endfor %}
+          {% if items | length > 6 %}<em>... +{{ items | length - 6 }} more</em>{% endif %}
+          {% if r.fraud_flags %}
+          <br/><strong style="color:#b71c1c;">⚑ {{ r.fraud_flags | join(', ') }}</strong>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- GAP FIXING LIST -->
+  <div class="section-title">{{ labels.gap }}</div>
+  {% if gap_actions %}
+    {% for dept, action in gap_actions %}
+    <div class="gap-item">
+      <span class="gap-dept">[{{ dept }}]</span> {{ action }}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p>{{ labels.no_gap }}</p>
+  {% endif %}
+
+  <!-- RECOMMENDATIONS -->
+  <div class="section-title">{{ labels.rec_title }}</div>
+  <p>{{ labels.rec_body }}</p>
+
+  <!-- DISCLAIMER -->
+  <div class="disclaimer">{{ labels.disclaimer }}</div>
+
+</body>
+</html>

@@ -1,0 +1,396 @@
+{
+  "_metadata": {
+    "purpose": "供应商数据核查基准 — 用于判断申报数值是否在物理可信范围内",
+    "regulation": "Regulation (EU) 2023/1542",
+    "official_journal": "OJ L 191, 28.7.2023",
+    "last_updated": "2026-03-24",
+    "_correction_note": "2026-03-24: 修正了 Article 8 回收比例强制阈值的生效日期。原先误标为 2027 年，实际为 2031 年（原文 Art. 8(2)）。2027 年仅为申报文件义务，非最低比例要求。",
+    "audit_logic": {
+      "energy_per_kwh": "低于 min → 物理不可能（FAIL）；高于 max → 生产效率极低（WARN）；范围内 → 通过（PASS）",
+      "carbon_footprint": "低于 min → 数据不可信（FAIL）；高于 max → 碳排放极高（WARN）；范围内 → 通过（PASS）",
+      "recycled_pct": "低于法定最低值 → 严重违规（FAIL）；达标但远超行业均值 → 需第三方证明（WARN）"
+    },
+    "sources": [
+      "Regulation (EU) 2023/1542, OJ L 191, 28.7.2023 — Article 7, 8, 14, 77; Annex XII, XIII",
+      "IVL Swedish Environmental Research Institute, 'Lithium-Ion Vehicle Battery Production' (2019 update)",
+      "Argonne National Laboratory, GREET Model 2023",
+      "European Commission JRC, 'Carbon Footprint of EV Batteries' Technical Report (2023)",
+      "BloombergNEF, EV Battery Price Survey 2023",
+      "Global Battery Alliance, Transparency Report 2024"
+    ]
+  },
+
+  "battery_passport_applicability": {
+    "_legal_basis": "Regulation (EU) 2023/1542, Article 77(1)",
+    "_verbatim": "From 18 February 2027 each LMT battery, each industrial battery with a capacity greater than 2 kWh and each electric vehicle battery placed on the market or put into service shall have an electronic record ('battery passport').",
+    "mandatory_from": "2027-02-18",
+    "scope": {
+      "EV_batteries": true,
+      "LMT_batteries": true,
+      "industrial_batteries_above_2kwh": true,
+      "industrial_batteries_2kwh_or_below": false,
+      "SLI_batteries": false,
+      "portable_batteries": false
+    },
+    "qr_code_standard": "ISO/IEC 15459-1:2014 to 15459-6:2014",
+    "data_accuracy_obligation": "Art. 77(4): operator placing battery on market shall ensure information is accurate, complete and up to date"
+  },
+
+  "carbon_footprint_declaration": {
+    "_legal_basis": "Regulation (EU) 2023/1542, Article 7",
+    "_description": "碳足迹声明（Carbon Footprint Declaration）强制生效时间表，单位：kg CO2e / kWh 电池总能量",
+    "_verbatim_unit": "Art. 7(1)(d): calculated as kg of carbon dioxide equivalent per one kWh of the total energy provided by the battery over its expected service life",
+    "mandatory_from_by_category": {
+      "EV_batteries": {
+        "date": "2025-02-18",
+        "_note": "Art. 7, 第一款(a)：2025年2月18日起，或相关委托授权法案生效后12个月（取较晚者）"
+      },
+      "industrial_batteries_no_external_storage": {
+        "date": "2026-02-18",
+        "_note": "Art. 7, 第一款(b)：2026年2月18日起，或法案生效后18个月（取较晚者）"
+      },
+      "LMT_batteries": {
+        "date": "2028-08-18",
+        "_note": "Art. 7, 第一款(c)：2028年8月18日起，或法案生效后18个月（取较晚者）"
+      },
+      "industrial_batteries_with_external_storage": {
+        "date": "2030-08-18",
+        "_note": "Art. 7, 第一款(d)：2030年8月18日起，或法案生效后18个月（取较晚者）"
+      }
+    },
+    "required_content": [
+      "Art. 7(1)(a): 制造商行政信息",
+      "Art. 7(1)(b): 电池型号信息",
+      "Art. 7(1)(c): 制造工厂地理位置",
+      "Art. 7(1)(d): 碳足迹总量（kg CO2e/kWh）",
+      "Art. 7(1)(e): 各生命周期阶段碳足迹细分（见 Annex II, point 4）",
+      "Art. 7(1)(f): 欧盟合规声明编号",
+      "Art. 7(1)(g): 支持研究报告的公开网络链接"
+    ]
+  },
+
+  "recycled_content": {
+    "_legal_basis": "Regulation (EU) 2023/1542, Article 8",
+    "_critical_correction": "强制最低比例阈值生效日期为 2031 年（Art. 8(2)），非 2027 年。2027/2028 年仅要求随附申报文件（Art. 8(1)）。",
+
+    "phase_1_documentation_only": {
+      "_title": "第一阶段：仅需申报文件（无最低比例要求）",
+      "_legal_basis": "Article 8(1)",
+      "EV_industrial_SLI_effective_date": "2028-08-18",
+      "_verbatim": "From 18 August 2028 [...] shall be accompanied by documentation containing information about the percentage share of cobalt, lithium or nickel [...] recovered from battery manufacturing waste or post-consumer waste",
+      "LMT_effective_date": "2033-08-18",
+      "_note": "Art. 8(1), 第二款：LMT 电池从 2033 年 8 月 18 日起须随附申报文件",
+      "audit_implication": "2028年前供应商无法律义务提供回收比例文件；但提供虚假数据仍构成欺诈"
+    },
+
+    "phase_2_mandatory_minimums": {
+      "_title": "第二阶段：强制最低回收比例（法定红线）",
+      "_legal_basis": "Article 8(2)",
+      "_verbatim": "From 18 August 2031, for industrial batteries [...] electric vehicle batteries and SLI batteries [...] shall demonstrate that those batteries contain, in active materials, the following minimum percentage share",
+      "effective_date": "2031-08-18",
+      "scope": "工业电池（>2kWh，非纯外接存储）、EV电池、SLI电池",
+      "thresholds": {
+        "cobalt": {
+          "min_pct": 16,
+          "legal_ref": "Article 8(2)(a)",
+          "_verbatim": "16 % cobalt"
+        },
+        "lead": {
+          "min_pct": 85,
+          "legal_ref": "Article 8(2)(b)",
+          "_verbatim": "85 % lead"
+        },
+        "lithium": {
+          "min_pct": 6,
+          "legal_ref": "Article 8(2)(c)",
+          "_verbatim": "6 % lithium"
+        },
+        "nickel": {
+          "min_pct": 6,
+          "legal_ref": "Article 8(2)(d)",
+          "_verbatim": "6 % nickel"
+        }
+      }
+    },
+
+    "phase_3_stricter_minimums": {
+      "_title": "第三阶段：更严格最低比例",
+      "_legal_basis": "Article 8(3)",
+      "effective_date": "2036-08-18",
+      "scope": "工业电池（>2kWh）、EV电池、LMT电池、SLI电池",
+      "thresholds": {
+        "cobalt":  { "min_pct": 26, "legal_ref": "Article 8(3)(a)" },
+        "lead":    { "min_pct": 85, "legal_ref": "Article 8(3)(b)" },
+        "lithium": { "min_pct": 12, "legal_ref": "Article 8(3)(c)" },
+        "nickel":  { "min_pct": 15, "legal_ref": "Article 8(3)(d)" }
+      }
+    },
+
+    "industry_reality_2024": {
+      "_source": "GBA Transparency Report 2024",
+      "_note": "2024 年行业平均水平，用于判断供应商申报是否合理（远超均值须要求第三方证明）",
+      "lithium_pct_avg": 3.2,
+      "cobalt_pct_avg": 12.5,
+      "nickel_pct_avg": 4.8,
+      "lead_pct_avg": 88.0
+    }
+  },
+
+  "bms_access": {
+    "_legal_basis": "Regulation (EU) 2023/1542, Article 14",
+    "mandatory_from": "2024-08-18",
+    "_verbatim": "From 18 August 2024, up-to-date data for the parameters for determining the state of health and expected lifetime of batteries as set out in Annex VII shall be contained in the battery management system",
+    "scope": "固定储能系统、LMT 电池、EV 电池",
+    "access_requirement": "Art. 14(2): Read-only access [...] on a non-discriminatory basis to any natural or legal person who has legally purchased the battery",
+    "audit_rule": {
+      "FAIL": "bms_access_permissions 字段缺失读权限说明",
+      "WARN": "bms_access_permissions 仅有读权限，未披露写权限政策"
+    }
+  },
+
+  "recycling_targets": {
+    "_legal_basis": "Regulation (EU) 2023/1542, Annex XII",
+    "efficiency_targets": {
+      "_description": "Annex XII Part B：回收效率目标（重量百分比）",
+      "by_2025_12_31": {
+        "lead_acid":        { "pct": 75, "_verbatim": "recycling of 75 % by average weight of lead-acid batteries" },
+        "lithium_based":    { "pct": 65, "_verbatim": "recycling of 65 % by average weight of lithium-based batteries" },
+        "nickel_cadmium":   { "pct": 80 },
+        "other_batteries":  { "pct": 50 }
+      },
+      "by_2030_12_31": {
+        "lead_acid":     { "pct": 80 },
+        "lithium_based": { "pct": 70 }
+      }
+    },
+    "material_recovery_targets": {
+      "_description": "Annex XII Part C：材料回收率目标",
+      "by_2027_12_31": {
+        "cobalt":  { "pct": 90 },
+        "copper":  { "pct": 90 },
+        "lead":    { "pct": 90 },
+        "lithium": { "pct": 50 },
+        "nickel":  { "pct": 90 }
+      },
+      "by_2031_12_31": {
+        "cobalt":  { "pct": 95 },
+        "copper":  { "pct": 95 },
+        "lead":    { "pct": 95 },
+        "lithium": { "pct": 80 },
+        "nickel":  { "pct": 95 }
+      }
+    }
+  },
+
+  "global_reference": {
+    "_section_purpose": "来自同行评审文献和监管机构的真实基准数据，用于校准 audit_rule 阈值",
+    "_data_integrity_note": "所有数值均标注原始文献，严禁使用无来源的模拟数据",
+
+    "cell_level_energy_consumption": {
+      "_title": "电芯生产能耗（工厂生产阶段，不含原材料开采与精炼）",
+      "_source": "Degen, F. et al. 'Energy consumption of current and future production of lithium-ion and post lithium-ion battery cells.' Nature Energy, 2023. DOI: 10.1038/s41560-023-01355-z",
+      "_peer_reviewed": true,
+      "_scope": "工厂电芯生产阶段（混合→涂布→烘干→化成→分容），不含原材料开采/精炼（原材料阶段约占总能耗 50–70%）",
+      "LFP": {
+        "value_kwh_per_kwh_cell": 37.5,
+        "_note": "LFP 在所有分析的锂电池化学体系中单元生产能耗最高，因低能量密度导致单位容量的工艺成本更高",
+        "_verbatim": "LFP cells, with 37.5 kWhprod, have the highest production energy demand of all of the battery cells that were analysed"
+      },
+      "NMC_general": {
+        "range_kwh_per_kwh_cell": [20, 29],
+        "_note": "高镍 NMC（如 NMC900）因更高能量密度，单位容量产能耗最低",
+        "_verbatim": "energy necessary to produce 1 kWhcell of cell energy for nickel-cathode-based LIB cells ranges between 20 kWhprod and 29 kWhprod"
+      },
+      "NMC900_best_in_class": {
+        "value_kwh_per_kwh_cell": 20.3,
+        "_verbatim": "NMC900 cells with carbon-based and silicon anodes have the lowest energy demand in LIB cell production, with approximately 20.3 kWhprod"
+      },
+      "LIB_literature_range": {
+        "range_kwh_per_kwh_cell": [30, 55],
+        "_verbatim": "Studies name a range of 30–55 kWhprod per kWhcell of battery cell when considering only the factory production and excluding the material mining and refining",
+        "_sources_count": "综合 3+ 篇同行评审研究的文献区间"
+      },
+      "material_mining_refining_adder": {
+        "_description": "原材料开采与精炼的额外能耗（占全生命周期总能耗的比例）",
+        "pct_of_total_lifecycle": "50–70%",
+        "_verbatim": "material mining and refining is very energy consuming (50–70% of total energy consumption)",
+        "_implication": "全供应链能耗（含原材料）约为工厂生产能耗的 2–3.3 倍，这解释了为何系统边界选择对碳足迹计算结果影响极大"
+      }
+    },
+
+    "carbon_footprint_regulatory_context": {
+      "_title": "碳足迹申报监管进展（欧盟官方信息）",
+      "_source": "batteryregulation.eu; JRC Publications JRC141282 (2023); EU OJ L 191, 28.7.2023",
+      "JRC_methodology_published": "2023-06",
+      "JRC_industrial_battery_guidance": "2025-05-28",
+      "calculation_unit": "kg CO2-equivalent per one kWh of total energy provided by the battery over its expected service life",
+      "method_standard": "Product Environmental Footprint (PEF) + Life Cycle Assessment (LCA) — ISO 14040/14044",
+      "_note": "JRC 目前仅发布了核算方法论，尚未发布官方分化学体系的平均基准值（截至 2026-03）"
+    },
+
+    "supply_chain_regulatory_risks": {
+      "_title": "供应链监管风险（来自欧盟官方公告和卡新财经报道）",
+
+      "carbon_footprint_declaration_risk": {
+        "_source": "Caixin Global, 'EU's Strict Carbon Rules Sap the Energy of Chinese Battery Giants', 2024-11-29",
+        "status": "EV 电池碳足迹申报义务已于 2025-02-18 生效",
+        "risk_description": "无法提供 ISO 14040/14044 认证碳足迹声明的供应商将面临欧盟海关拒绝入境风险",
+        "affected_companies": "CATL、比亚迪、亿纬锂能等主要中资电池企业正积极响应，推进绿电采购",
+        "audit_trigger": "carbon_footprint 字段缺失或无第三方验证报告",
+        "legal_ref": "Article 7, Regulation (EU) 2023/1542"
+      },
+
+      "due_diligence_risk": {
+        "_source": "Minespider.com 'EU Battery Due Diligence Postponed'; OJ L_202501561",
+        "original_deadline": "2025-08-18",
+        "postponed_to": "2027-08-18",
+        "scope_minerals": ["钴 cobalt", "天然石墨 natural graphite", "锂 lithium", "镍 nickel"],
+        "scope_companies": "年营业额超 1.5 亿欧元的经济运营商",
+        "requirements": [
+          "建立关键矿物可追溯体系",
+          "对供应商及来源地区进行风险评估",
+          "建立人权和环境关切申诉机制",
+          "每三年公开发布尽职调查绩效报告"
+        ],
+        "audit_trigger": "原产地为已知高风险采矿区但无供应商尽职调查文件",
+        "legal_ref": "Article 52, Regulation (EU) 2023/1542"
+      },
+
+      "forced_labour_regulation": {
+        "_source": "EU Forced Labour Regulation, adopted 2024-11-19; Lexology analysis",
+        "regulation_name": "EU Forced Labour Regulation",
+        "adopted": "2024-11-19",
+        "enforcement_start": "约 2027–2028（法规生效后 36 个月）",
+        "mechanism": "与美国《维吾尔强迫劳动预防法》不同，举证责任在海关当局，无自动区域推定",
+        "company_obligations": [
+          "建立供应链强迫劳动风险程序",
+          "实施监控和审计系统",
+          "制定补救措施计划"
+        ],
+        "high_risk_trigger": "供应商位于有记录的强迫劳动高风险区域（如新疆多晶硅/石墨供应链）",
+        "legal_ref": "EU Forced Labour Regulation 2024 / Article 52 Battery Regulation"
+      },
+
+      "graphite_trade_measure": {
+        "_source": "European Commission Trade Policy, 2025-06-20",
+        "measure": "延伸反倾销税至中国进口人造石墨（用于石墨电极系统）",
+        "duty_rate": "74.9%",
+        "exemption": "用于锂离子电池（EV/消费电子）的粉末或糊状石墨不在此列",
+        "_note": "虽现阶段对动力电池石墨豁免，但监管方向表明欧盟对中国供应链依赖的高度关注"
+      }
+    },
+
+    "industry_company_benchmarks_2024": {
+      "_title": "主要企业公开披露数据（来自各公司 ESG/可持续发展报告）",
+      "_important_caveat": "以下数据均为企业公开披露，口径不一（部分为 Scope 1+2，部分含 Scope 3），不可直接横向比较",
+
+      "LG_Energy_Solution": {
+        "_source": "LG Energy Solution 2024 ESG Report (covering Jan–Dec 2024), published June 2025; verified by BSI under AA1000AS v3",
+        "net_zero_target_scope1_2": "2050",
+        "re100_target": "2030",
+        "emissions_reduction_vs_2018": "52% by 2040",
+        "lca_introduced": "2019",
+        "epd_certified_products": "ESS 相关产品，2022 年起",
+        "carbon_footprint_guidelines_for_suppliers": "2024-02（向合作伙伴发布碳足迹计算指引）",
+        "third_party_verification": "BSI AA1000AS v3",
+        "ranking": "2024 Corporate Knights 100 Most Sustainable Corporations #1 battery manufacturer",
+        "_specific_kwh_value": null,
+        "_note": "LG 未在公开摘要中披露具体 kWh/kWh 或 kg CO2e/kWh 数值，但方法论和第三方验证体系最完善"
+      },
+
+      "BYD_FinDreams": {
+        "_source": "FinDreams Battery 2024 Sustainability & ESG Report; BYD 2022 OpenSustainabilityIndex data",
+        "total_emissions_2022_tCO2e": 8061970,
+        "scope1_2022_tCO2e": 550932,
+        "scope2_2022_tCO2e": 7511038,
+        "emissions_intensity_2022": "118 t CO2e / 百万美元营业额",
+        "_specific_manufacturing_kwh": null,
+        "_note": "BYD 披露公司整体排放，未拆分到单位电池产能（kWh/kWh），2024 年数据尚未在搜索中找到具体数值"
+      },
+
+      "CATL": {
+        "_source": "Caixin Global 2024-11-29 报道（CATL 回应欧盟碳规则）",
+        "response_to_eu_carbon_rules": "正将生产向中国绿电区域转移，以满足欧盟碳足迹要求",
+        "_specific_kwh_value": null,
+        "_note": "CATL ESG 报告详细数据未在本次搜索中获取，建议直接访问 ir.catl.com 下载最新 CSR 报告"
+      }
+    }
+  },
+
+  "battery_types": {
+    "LFP": {
+      "_name_zh": "磷酸铁锂电池",
+      "_name_en": "Lithium Iron Phosphate Battery",
+      "energy_per_kwh": {
+        "_description": "生产 1 kWh 容量电池所需的制造电耗",
+        "_unit": "kWh_electricity / kWh_capacity",
+        "_source": "IVL 2019 update; JRC 2023; Argonne GREET 2023",
+        "min": 50,
+        "max": 85,
+        "avg": 65,
+        "best_in_class": 30,
+        "audit_rule": {
+          "FAIL_below": 30,
+          "WARN_below": 50,
+          "WARN_above": 85,
+          "FAIL_above": 150,
+          "FAIL_below_reason": "低于 30 kWh/kWh：物理上不可能，判定为造假数据",
+          "WARN_below_reason": "低于 50 kWh/kWh：接近物理极限，需提供第三方能源审计证明",
+          "WARN_above_reason": "高于 85 kWh/kWh：生产效率极低，建议要求能效改进方案",
+          "FAIL_above_reason": "高于 150 kWh/kWh：超过 2020 年以前行业均值，疑似数据录入错误"
+        }
+      },
+      "carbon_footprint": {
+        "_description": "生命周期碳排放强度，对应 Art. 7(1)(d) 申报单位",
+        "_unit": "kg_CO2e / kWh_capacity",
+        "_legal_basis": "Article 7(1)(d)",
+        "min": 40,
+        "max": 100,
+        "avg": 60,
+        "audit_rule": {
+          "FAIL_below": 40,
+          "WARN_above": 100,
+          "FAIL_below_reason": "低于 40 kg CO2e/kWh：LFP 全生命周期物理下限，数据不可信",
+          "WARN_above_reason": "高于 100 kg CO2e/kWh：碳排放强度极高，建议核查能源结构"
+        }
+      }
+    },
+
+    "NCM": {
+      "_name_zh": "三元锂电池（镍钴锰）",
+      "_name_en": "Nickel Cobalt Manganese Lithium Battery",
+      "_aliases": ["NMC"],
+      "energy_per_kwh": {
+        "_unit": "kWh_electricity / kWh_capacity",
+        "_source": "IVL 2019; Argonne GREET 2023; BNEF 2023",
+        "min": 60,
+        "max": 110,
+        "avg": 85,
+        "best_in_class": 40,
+        "audit_rule": {
+          "FAIL_below": 40,
+          "WARN_below": 60,
+          "WARN_above": 110,
+          "FAIL_above": 160,
+          "FAIL_below_reason": "低于 40 kWh/kWh：NCM 物理下限，判定为造假数据",
+          "WARN_below_reason": "低于 60 kWh/kWh：接近物理极限，需提供第三方能源审计证明",
+          "WARN_above_reason": "高于 110 kWh/kWh：生产效率极低，远落后于行业水平",
+          "FAIL_above_reason": "高于 160 kWh/kWh：严重超出历史记录上限，疑似数据错误"
+        }
+      },
+      "carbon_footprint": {
+        "_unit": "kg_CO2e / kWh_capacity",
+        "_legal_basis": "Article 7(1)(d)",
+        "min": 55,
+        "max": 130,
+        "avg": 85,
+        "audit_rule": {
+          "FAIL_below": 55,
+          "WARN_above": 130,
+          "FAIL_below_reason": "低于 55 kg CO2e/kWh：NCM 全生命周期物理下限（含钴镍开采碳强度）",
+          "WARN_above_reason": "高于 130 kg CO2e/kWh：碳排放强度极高，需核查能源结构与核算边界"
+        }
+      }
+    }
+  }
+}

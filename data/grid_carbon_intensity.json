@@ -1,0 +1,75 @@
+{
+  "_metadata": {
+    "title": "全球电网碳排放强度数据库",
+    "unit": "gCO2eq / kWh (lifecycle, including upstream)",
+    "primary_source": "Ember – Yearly Electricity Data 2024 (covering 2023 data); Our World in Data 2026",
+    "secondary_source": "China: National Climate Strategy Center, 2023 Regional Grid Baseline Emission Factors (published 2024-07-08); Ministry of Ecology and Environment 2021 national average",
+    "methodology": "Lifecycle carbon intensity including upstream methane, supply chain and manufacturing emissions (Ember methodology)",
+    "last_updated": "2026-03-24",
+    "citation": "Ember (2026) – with major processing by Our World in Data. Retrieved March 24, 2026.",
+    "audit_use": "若供应商声称使用绿电但无法提供 I-REC 编号，自动切换为本地电网因子进行碳足迹核算",
+    "green_electricity_irec_rule": {
+      "description": "I-REC (International Renewable Energy Certificate) 是国际通行绿电证书",
+      "audit_logic": "若 green_electricity_claimed=true 且 irec_certificate_id 为空，则使用本地电网碳强度代替零碳因子",
+      "irec_registry": "https://www.irecstandard.org/"
+    }
+  },
+
+  "china_national": {
+    "value_g_co2_per_kwh": 581,
+    "year": 2023,
+    "source": "Ember Global Electricity Review 2024",
+    "_verbatim": "China had a carbon intensity of 581 gCO2/kWh in 2023, significantly above the global average of 480 gCO2/kWh",
+    "trend": "下降中（2022: 557 gCO2/kWh, 2021: 581 gCO2/kWh，波动受煤电占比影响）"
+  },
+
+  "china_provinces": {
+    "_source_note": "数据来源：中国国家气候战略中心 2023 年基准排放因子 + 各省能源结构分析；Oreate AI Analysis 2024-2026",
+    "_methodology": "各省数据基于其所属区域电网（六大区域电网）及本地可再生能源比例综合估算",
+
+    "Yunnan":        { "value": 95,  "profile": "水电为主（约 90%），碳强度极低", "risk_level": "GREEN",  "battery_manufacturing_suitability": "极高" },
+    "Sichuan":       { "value": 130, "profile": "水电为主（约 85%），季节性波动大", "risk_level": "GREEN", "battery_manufacturing_suitability": "极高" },
+    "Qinghai":       { "value": 100, "profile": "水电+光伏，碳强度最低省份之一", "risk_level": "GREEN",  "battery_manufacturing_suitability": "高" },
+    "Guangdong":     { "value": 430, "profile": "混合能源，核电+天然气+煤电", "risk_level": "MEDIUM",   "battery_manufacturing_suitability": "中" },
+    "Jiangsu":       { "value": 530, "profile": "煤电为主，但光伏装机快速增长", "risk_level": "HIGH",    "battery_manufacturing_suitability": "中" },
+    "Zhejiang":      { "value": 510, "profile": "煤电为主，核电辅助", "risk_level": "HIGH",              "battery_manufacturing_suitability": "中" },
+    "Shanghai":      { "value": 540, "profile": "煤电+天然气为主", "risk_level": "HIGH",                 "battery_manufacturing_suitability": "低" },
+    "Beijing":       { "value": 560, "profile": "煤电+天然气，北京减煤进展明显", "risk_level": "HIGH",   "battery_manufacturing_suitability": "低" },
+    "Inner_Mongolia":{ "value": 680, "profile": "煤电大省，风电装机大但消纳率低", "risk_level": "VERY_HIGH", "battery_manufacturing_suitability": "极低" },
+    "Xinjiang":      { "value": 750, "profile": "煤电为主，光伏消纳存在弃光问题", "risk_level": "VERY_HIGH", "battery_manufacturing_suitability": "极低",
+                       "_geopolitical_note": "新疆还面临强迫劳动法规审查（EU Forced Labour Regulation 2024）" },
+    "Shanxi":        { "value": 800, "profile": "煤炭大省，全国碳强度最高省份之一", "risk_level": "VERY_HIGH", "battery_manufacturing_suitability": "极低" },
+    "Guizhou":       { "value": 650, "profile": "煤电为主，水电补充", "risk_level": "HIGH",              "battery_manufacturing_suitability": "低" },
+    "Hunan":         { "value": 550, "profile": "煤电+水电混合", "risk_level": "HIGH",                   "battery_manufacturing_suitability": "低" },
+    "Fujian":        { "value": 350, "profile": "核电+水电比例较高", "risk_level": "MEDIUM",             "battery_manufacturing_suitability": "中高" },
+    "Ningxia":       { "value": 780, "profile": "煤电大省，风光装机增长但本地消纳有限", "risk_level": "VERY_HIGH", "battery_manufacturing_suitability": "极低" }
+  },
+
+  "global_countries": {
+    "_source": "Ember Global Electricity Review 2024 (2023 data); Our World in Data Lifecycle Carbon Intensity 2026",
+
+    "China":        { "value": 581, "year": 2023, "risk_level": "HIGH",     "_note": "全国平均，各省差异极大" },
+    "Germany":      { "value": 380, "year": 2023, "risk_level": "MEDIUM",   "_note": "煤电退出中，可再生能源快速增长" },
+    "France":       { "value":  56, "year": 2023, "risk_level": "GREEN",    "_note": "核电占比约 70%，欧盟最低碳强度国家之一" },
+    "Poland":       { "value": 720, "year": 2023, "risk_level": "VERY_HIGH","_note": "煤电占比约 70%，欧盟最高碳强度国家" },
+    "Norway":       { "value":  26, "year": 2023, "risk_level": "GREEN",    "_note": "水电占比约 90%，全球最低碳强度之一" },
+    "Sweden":       { "value":  46, "year": 2023, "risk_level": "GREEN",    "_note": "水电+核电，碳强度极低" },
+    "Netherlands":  { "value": 320, "year": 2023, "risk_level": "MEDIUM" },
+    "Italy":        { "value": 280, "year": 2023, "risk_level": "MEDIUM" },
+    "EU_average":   { "value": 255, "year": 2023, "risk_level": "MEDIUM",   "_note": "EU-27 加权平均，快速下降中" },
+    "South_Korea":  { "value": 430, "year": 2023, "risk_level": "MEDIUM",   "_note": "煤电+核电，LG/Samsung 主要生产基地" },
+    "Indonesia":    { "value": 740, "year": 2023, "risk_level": "VERY_HIGH","_note": "煤电约 60%，镍矿主产国，电池供应链碳强度高" },
+    "Australia":    { "value": 470, "year": 2023, "risk_level": "MEDIUM",   "_note": "煤电为主，可再生能源快速增长" },
+    "Chile":        { "value": 300, "year": 2023, "risk_level": "MEDIUM",   "_note": "水电+光伏，锂矿主产国" },
+    "DRC":          { "value": 120, "year": 2023, "risk_level": "GREEN",    "_note": "水电为主；但钴矿手工开采存在严重人权风险（与碳强度无关）",
+                      "_geopolitical_warning": "低碳电网 ≠ 无风险：DRC 钴矿供应链面临严重人权和童工风险" },
+    "Global_avg":   { "value": 480, "year": 2023, "risk_level": "MEDIUM",   "source": "Ember 2024" }
+  },
+
+  "green_electricity_substitution_rules": {
+    "_description": "当供应商声称使用绿电时的核查规则",
+    "with_valid_irec":   { "factor_g_co2_per_kwh": 0,   "condition": "提供有效 I-REC 证书编号，且可在 I-REC 注册中心验证" },
+    "with_ppa_contract": { "factor_g_co2_per_kwh": 15,  "condition": "提供电力购买协议（PPA）合同，适用少量上游排放" },
+    "without_proof":     { "factor_g_co2_per_kwh": "use_local_grid", "condition": "无法提供 I-REC 或 PPA 证明，自动回退至本地电网因子" }
+  }
+}
